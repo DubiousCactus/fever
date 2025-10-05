@@ -16,7 +16,7 @@ class NoPrint:
 if __name__ == "__main__":
     console = Console() if bool(int(os.getenv("DEBUG", False))) else NoPrint()
     ihook = ImportHook(console)
-    ihook.setup()
+    ihook.setup(show_skips=False)
 
     print("Loading test module")
     import test
@@ -33,7 +33,7 @@ if __name__ == "__main__":
     print("AST analysis...")
     analyzer = ASTAnalyzer(console)
     for dep_name, dep_path, dep_module in ihook.get_dependencies("test"):
-        mitaine_module = analyzer.analyze(dep_module, dep_name)
+        mitaine_module = analyzer.analyze(dep_module, dep_name, show_ast=False)
         console.print(Panel(Pretty(mitaine_module)))
 
     ihook.cleanup()

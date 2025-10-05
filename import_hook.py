@@ -25,10 +25,12 @@ class ImportHook(MetaPathFinder):
         self._dependencies: Dict[str, List[Tuple[str, Optional[str]]]] = defaultdict(
             list
         )
+        self._show_skips = False
 
-    def setup(self):
+    def setup(self, show_skips: bool = False):
         self.cleanup()
         self._console.print("Seting up the import hook", style="green on black")
+        self._show_skips = show_skips
         sys.meta_path.insert(0, self)
 
     def cleanup(self):
@@ -47,15 +49,13 @@ class ImportHook(MetaPathFinder):
         make a more educated guess about what spec to return.
         """
         found_local = False
-        for root, dirs, files in os.walk(os.path.curdir):
+        for _, dirs, files in os.walk(os.path.curdir):
             try:
                 for ignore_dir in self.ignore_dirs:
                     dirs.remove(ignore_dir)
             except Exception:
                 pass
 
-            if fullname in root:
-                found_local = True
             for f in files:
                 if f.startswith(fullname):
                     found_local = True
@@ -65,9 +65,10 @@ class ImportHook(MetaPathFinder):
                     found_local = True
                     break
         if not found_local:
-            self._console.print(
-                f"Skipping non-user module '{fullname}'", style="red on black"
-            )
+            if self._show_skips:
+                self._console.print(
+                    f"Skipping non-user module '{fullname}'", style="red on black"
+                )
             return None
         caller_module = (None, None)
         for frame in inspect.stack():

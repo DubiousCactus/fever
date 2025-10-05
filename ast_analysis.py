@@ -63,7 +63,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             "methods": defaultdict(list),
         }
 
-    def analyze(self, obj: object, name: str) -> MitaineModule:
+    def analyze(self, obj: object, name: str, show_ast=False) -> MitaineModule:
         """
         Analyze the AST of a given object (typically a module, but possibly a class or
         other) and return a MitaineModule which tracks module-level functions, classes,
@@ -84,14 +84,15 @@ class ASTAnalyzer(ast.NodeVisitor):
             raise TypeError(
                 f"'{name}' is not a module. AST analysis is only for modules."
             )
-        self._console.print(
-            Panel(
-                ast.dump(ast_root, indent=2, show_empty=True),
-                title=f"AST of {name}",
-                expand=False,
-            ),
-            overflow="ellipsis",
-        )
+        if show_ast:
+            self._console.print(
+                Panel(
+                    ast.dump(ast_root, indent=2, show_empty=True),
+                    title=f"AST of {name}",
+                    expand=False,
+                ),
+                overflow="ellipsis",
+            )
         self._console.print("Analyzing callables...", style="green on black")
         self.visit(ast_root)
         return MitaineModule(
