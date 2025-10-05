@@ -93,13 +93,27 @@ class DependencyTracker(MetaPathFinder):
             # self._dependencies[caller_module[0]].append((fullname, None))
         return None  # Fallback to other finders (default behaviour of import())
 
-    def get_dependencies(self, module_name: str) -> List[Tuple[str, str, object]]:
+    def get_dependencies(self, module_name: str) -> List[str]:
+        """
+        Return the list of all modules that directly or indirectly depend on
+        module_name.
+        """
+
+        def accumulate_pred(node: str) -> List[str]:
+            preds = list(self._dep_graph.predecessors(node))
+            for pred in preds.copy():
+                preds += accumulate_pred(pred)
+            return preds
+
+        return accumulate_pred(module_name)
+
+    def get_dependent_modules(self, module_name: str) -> List[Tuple[str, str, object]]:
         """
         Return a list of dependencies as tuples of module (name, path and object), given
         a query module name.
         """
         deps = []
-        for dep_name in self._dep_graph[module_name]:
+        for dep_name in self.get_dependencies(module_name):
             module = importlib.import_module(dep_name)
             path = inspect.getfile(module)
             self._console.print(
