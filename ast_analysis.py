@@ -10,6 +10,7 @@ import inspect
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Dict, List
+from uuid import UUID, uuid1
 
 from rich.console import Console
 from rich.panel import Panel
@@ -18,11 +19,34 @@ from rich.syntax import Syntax
 
 
 @dataclass
+class MitaineClass:
+    name: str
+    uid: UUID
+    ast_node: ast.ClassDef
+
+
+@dataclass
+class MitaineFunction:
+    name: str
+    uid: UUID
+    ast_node: ast.FunctionDef
+    args: List[Any]
+
+
+@dataclass
+class MitaineLambda:
+    uid: UUID
+    ast_node: ast.Lambda
+    args: List[Any]
+
+
+@dataclass
 class MitaineModule:
-    classes: List[ast.ClassDef]
-    functions: List[ast.FunctionType]
-    methods: Dict[ast.ClassDef, List[ast.FunctionType]]
-    lambdas: List[ast.Lambda]
+    root: str
+    classes: List[MitaineClass]
+    functions: List[MitaineFunction]
+    methods: Dict[MitaineClass, List[MitaineFunction]]
+    lambdas: List[MitaineLambda]
 
 
 class ASTAnalyzer(ast.NodeVisitor):
@@ -56,6 +80,10 @@ class ASTAnalyzer(ast.NodeVisitor):
             overflow="ellipsis",
         )
         ast_root = ast.parse(source)
+        if not isinstance(ast_root, ast.Module):
+            raise TypeError(
+                f"'{name}' is not a module. AST analysis is only for modules."
+            )
         self._console.print(
             Panel(
                 ast.dump(ast_root, indent=2, show_empty=True),
@@ -67,6 +95,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._console.print("Analyzing callables...", style="green on black")
         self.visit(ast_root)
         return MitaineModule(
+            root=name,
             classes=self._context["classes"],
             functions=self._context["functions"],
             methods=self._context["methods"],
@@ -74,7 +103,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-        self._context["classes"].append(node)
+        self._context["classes"].append(MitaineClass(node.name, uuid1(), node))
         self._current_class.append(node)
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
@@ -92,10 +121,11 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"\[{prefix}] {node.name}: ({[arg.arg for arg in node.args.args]})",
             style=f"{color} on black",
         )
+        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [])
         if module_level:
-            self._context["functions"].append(node)
+            self._context["functions"].append(mitaine_obj)
         else:
-            self._context["methods"][self._current_class[-1]].append(node)
+            self._context["methods"][self._current_class[-1]].append(mitaine_obj)
         self.generic_visit(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
@@ -104,5 +134,5 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"{node}: ({[arg.arg for arg in node.args.args]})",
             style="green on black",
         )
-        self._context["lambdas"].append(node)
+        self._context["lambdas"].append(MitaineLambda(uuid1(), node, []))
         self.generic_visit(node)
