@@ -18,6 +18,8 @@ from rich.console import Console
 
 
 class ImportHook(MetaPathFinder):
+    ignore_dirs = [".git", "__pycache__", ".vscode"]
+
     def __init__(self, console: Console):
         self._console = console
         self._dependencies: Dict[str, List[Tuple[str, Optional[str]]]] = defaultdict(
@@ -45,16 +47,21 @@ class ImportHook(MetaPathFinder):
         make a more educated guess about what spec to return.
         """
         found_local = False
-        for root, files, dirs in os.walk(os.path.curdir):
+        for root, dirs, files in os.walk(os.path.curdir):
+            try:
+                for ignore_dir in self.ignore_dirs:
+                    dirs.remove(ignore_dir)
+            except Exception:
+                pass
+
             if fullname in root:
                 found_local = True
-                break
             for f in files:
-                if fullname in f:
+                if f.startswith(fullname):
                     found_local = True
                     break
             for d in dirs:
-                if fullname in d:
+                if fullname == d:
                     found_local = True
                     break
         if not found_local:
