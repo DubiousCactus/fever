@@ -3,7 +3,7 @@ from typing import List
 import rich
 import torch
 
-from other_test_module import other_function
+from test_module_c import other_function
 
 _ = rich
 _ = torch
