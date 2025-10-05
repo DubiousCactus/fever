@@ -5,7 +5,7 @@ from rich.panel import Panel
 from rich.pretty import Pretty
 
 from ast_analysis import ASTAnalyzer
-from import_hook import ImportHook
+from dependency_tracker import DependencyTracker
 
 
 class NoPrint:
@@ -15,8 +15,8 @@ class NoPrint:
 
 if __name__ == "__main__":
     console = Console() if bool(int(os.getenv("DEBUG", False))) else NoPrint()
-    ihook = ImportHook(console)
-    ihook.setup(show_skips=False)
+    dep_tracker = DependencyTracker(console)
+    dep_tracker.setup(show_skips=False)
 
     print("Loading test module")
     import test
@@ -30,10 +30,11 @@ if __name__ == "__main__":
     # print("Calling test.function again")
     # new_test.function()
 
+    dep_tracker.plot_dependency_graph()
     print("AST analysis...")
     analyzer = ASTAnalyzer(console)
-    for dep_name, dep_path, dep_module in ihook.get_dependencies("test"):
+    for dep_name, dep_path, dep_module in dep_tracker.get_dependencies("test"):
         mitaine_module = analyzer.analyze(dep_module, dep_name, show_ast=False)
         console.print(Panel(Pretty(mitaine_module)))
 
-    ihook.cleanup()
+    dep_tracker.cleanup()

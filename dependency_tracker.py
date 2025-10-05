@@ -10,30 +10,34 @@ import importlib
 import inspect
 import os
 import sys
-from collections import defaultdict
 from importlib.abc import MetaPathFinder
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
+import networkx as nx
 from rich.console import Console
 
 
-class ImportHook(MetaPathFinder):
+class DependencyTracker(MetaPathFinder):
     ignore_dirs = [".git", "__pycache__", ".vscode"]
 
     def __init__(self, console: Console):
         self._console = console
-        self._dependencies: Dict[str, List[Tuple[str, Optional[str]]]] = defaultdict(
-            list
-        )
+        self._dep_graph = nx.DiGraph()
         self._show_skips = False
 
     def setup(self, show_skips: bool = False):
+        """
+        Setup the import hook to keep track of user module imports.
+        """
         self.cleanup()
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
         sys.meta_path.insert(0, self)
 
     def cleanup(self):
+        """
+        Remove the import hook.
+        """
         self._console.print("Cleaning up the import hook", style="green on black")
         for finder in sys.meta_path.copy():
             if isinstance(finder, self.__class__):
@@ -85,7 +89,8 @@ class ImportHook(MetaPathFinder):
             style="green on black",
         )
         if caller_module[0] is not None:
-            self._dependencies[caller_module[0]].append((fullname, None))
+            self._dep_graph.add_edge(caller_module[0], fullname)
+            # self._dependencies[caller_module[0]].append((fullname, None))
         return None  # Fallback to other finders (default behaviour of import())
 
     def get_dependencies(self, module_name: str) -> List[Tuple[str, str, object]]:
@@ -94,12 +99,19 @@ class ImportHook(MetaPathFinder):
         a query module name.
         """
         deps = []
-        for i, (name, path) in enumerate(self._dependencies[module_name]):
-            module = importlib.import_module(name)
+        for dep_name in self._dep_graph[module_name]:
+            module = importlib.import_module(dep_name)
             path = inspect.getfile(module)
             self._console.print(
                 f"Found module '{module_name}''s path: <{path}>",
                 style="green on black",
             )
-            deps.append((name, path, module))
+            deps.append((dep_name, path, module))
         return deps
+
+    def plot_dependency_graph(self):
+        from matplotlib import pyplot as plt
+
+        plt.tight_layout()
+        nx.draw_networkx(self._dep_graph, arrows=True)
+        plt.show()
