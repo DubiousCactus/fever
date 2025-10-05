@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hot Code Reloading Roadmap</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            margin-bottom: 40px;
+        }
+        
+        .phase {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .phase-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #667eea;
+        }
+        
+        .phase-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8em;
+            font-weight: bold;
+            margin-right: 20px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .phase-title {
+            font-size: 1.8em;
+            color: #333;
+            margin: 0;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .card h3 {
+            color: #667eea;
+            margin-top: 0;
+            font-size: 1.3em;
+        }
+        
+        .card-content {
+            color: #444;
+            line-height: 1.6;
+        }
+        
+        .challenge {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .challenge h4 {
+            color: #856404;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .challenge h4:before {
+            content: "⚠️";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+        
+        .hint {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .hint h4 {
+            color: #0c5460;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .hint h4:before {
+            content: "💡";
+            margin-right: 10px;
+            font-size: 1.2em;
+        }
+        
+        .questions {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .questions h3 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        
+        .questions ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .questions li {
+            padding: 10px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 4px;
+            border-left: 3px solid #764ba2;
+        }
+        
+        .questions li:before {
+            content: "🤔 ";
+            margin-right: 8px;
+        }
+        
+        .milestone {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .milestone h3 {
+            color: #155724;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .milestone h3:before {
+            content: "🎯";
+            margin-right: 10px;
+            font-size: 1.3em;
+        }
+        
+        .exploration {
+            background: #e7f3ff;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .exploration h4 {
+            color: #004085;
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+        }
+        
+        .exploration h4:before {
+            content: "🔍";
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 Hot Code Reloading System - Build Roadmap</h1>
+    
+    <!-- PHASE 1 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">1</div>
+            <h2 class="phase-title">Foundation: Understanding the Pieces</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Module System Basics</h3>
+                <div class="card-content">
+                    <p>Explore how Python's import system works:</p>
+                    <ul>
+                        <li>What happens when you <code>import module</code>?</li>
+                        <li>Where do modules live? (<code>sys.modules</code>)</li>
+                        <li>What's the difference between importing a module vs importing from a module?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>The Reference Problem</h3>
+                <div class="card-content">
+                    <p>Create a simple test case:</p>
+                    <ul>
+                        <li>Module A defines a function</li>
+                        <li>Module B imports and stores reference to it</li>
+                        <li>Reload Module A</li>
+                        <li>What happens to B's reference?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>importlib.reload()</h3>
+                <div class="card-content">
+                    <p>Experiment with Python's built-in reloading:</p>
+                    <ul>
+                        <li>What does it do?</li>
+                        <li>What doesn't it handle?</li>
+                        <li>When does it fail?</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="exploration">
+            <h4>Experiments to Try</h4>
+            <ul>
+                <li>Write two modules where one imports from the other</li>
+                <li>Store a reference to a function in a variable</li>
+                <li>Reload the source module and see if the reference updates</li>
+                <li>Try with functions, classes, and class instances</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You should understand WHY naive reloading breaks and what the core challenge is.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 2 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">2</div>
+            <h2 class="phase-title">AST Analysis: Finding All Callables</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Parse and Inspect</h3>
+                <div class="card-content">
+                    <p>Learn to traverse Python's AST:</p>
+                    <ul>
+                        <li>Parse a simple module with <code>ast.parse()</code></li>
+                        <li>Print the tree structure</li>
+                        <li>Identify different node types</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>The Visitor Pattern</h3>
+                <div class="card-content">
+                    <p>Build your first NodeVisitor:</p>
+                    <ul>
+                        <li>Visit all function definitions</li>
+                        <li>Visit all class definitions</li>
+                        <li>Print their names and line numbers</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Context Tracking</h3>
+                <div class="card-content">
+                    <p>The key challenge:</p>
+                    <ul>
+                        <li>How to distinguish functions from methods?</li>
+                        <li>Use instance variables to track state</li>
+                        <li>Implement save/restore for nested classes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="challenge">
+            <h4>Challenge: Nested Classes</h4>
+            <p>Can your visitor correctly extract methods from nested classes without mixing them up?</p>
+            <p>Test with a class that has a nested class inside it, where both have methods.</p>
+        </div>
+        
+        <div class="hint">
+            <h4>Think About</h4>
+            <p>When you enter a class, you need to remember you're "inside" it. When you exit, you need to remember what you were doing before. Sound familiar? Think about how function call stacks work!</p>
+        </div>
+        
+        <div class="questions">
+            <h3>Questions to Answer</h3>
+            <ul>
+                <li>What information do you need to store about each callable?</li>
+                <li>How will you uniquely identify a method vs a function with the same name?</li>
+                <li>What about lambdas? How do they appear in the AST?</li>
+                <li>Can you find where a function is defined (line number)?</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You can scan any Python module and produce a complete list of all functions, classes, and methods with their locations.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 3 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">3</div>
+            <h2 class="phase-title">Dependency Tracking: Who Imports What?</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Import Hooks</h3>
+                <div class="card-content">
+                    <p>Intercept the import process:</p>
+                    <ul>
+                        <li>Research Python's import hooks</li>
+                        <li>Look at <code>__builtins__.__import__</code></li>
+                        <li>Figure out how to wrap it</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Dependency Graph</h3>
+                <div class="card-content">
+                    <p>Build a graph data structure:</p>
+                    <ul>
+                        <li>What nodes represent</li>
+                        <li>What edges represent</li>
+                        <li>How to traverse it</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Transitive Dependencies</h3>
+                <div class="card-content">
+                    <p>The chain reaction:</p>
+                    <ul>
+                        <li>If A imports B, and B imports C...</li>
+                        <li>When C changes, what needs reloading?</li>
+                        <li>How to find all affected modules?</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="exploration">
+            <h4>Build This</h4>
+            <p>Create a system that logs every import. When Module A imports Module B, record it. Build a directed graph where edges point from "importer" to "imported".</p>
+        </div>
+        
+        <div class="challenge">
+            <h4>Challenge: Circular Imports</h4>
+            <p>What happens when Module A imports B, and B imports A? How will your graph handle this? Can you detect cycles?</p>
+        </div>
+        
+        <div class="questions">
+            <h3>Questions to Answer</h3>
+            <ul>
+                <li>Should you track ALL imports or just your project's code?</li>
+                <li>How do you distinguish between <code>import x</code> and <code>from x import y</code>?</li>
+                <li>What about dynamic imports (<code>importlib.import_module()</code>)?</li>
+                <li>Do you need to track the ORDER of imports?</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You can visualize your project's import graph and find all modules that would be affected by changing any given module.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 4 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">4</div>
+            <h2 class="phase-title">Runtime Call Graph: Who Calls What?</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Execution Tracking</h3>
+                <div class="card-content">
+                    <p>Track function calls at runtime:</p>
+                    <ul>
+                        <li>Decorator pattern for wrapping</li>
+                        <li>Maintaining a call stack</li>
+                        <li>Recording caller/callee relationships</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Graph Node Design</h3>
+                <div class="card-content">
+                    <p>What should each node store?</p>
+                    <ul>
+                        <li>The callable itself</li>
+                        <li>Who called it</li>
+                        <li>What it called</li>
+                        <li>Cached results?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Dynamic vs Static</h3>
+                <div class="card-content">
+                    <p>Combine two views:</p>
+                    <ul>
+                        <li>AST gives you static structure</li>
+                        <li>Runtime gives you actual behavior</li>
+                        <li>How to merge them?</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="hint">
+            <h4>Key Insight</h4>
+            <p>The AST tells you what CAN be called. The call graph tells you what WAS called. Both are important! You need the first to know what to reload, and the second to know what to invalidate.</p>
+        </div>
+        
+        <div class="challenge">
+            <h4>Challenge: Recursive Functions</h4>
+            <p>How do you handle a function that calls itself? Should you create multiple nodes or track it differently?</p>
+        </div>
+        
+        <div class="questions">
+            <h3>Design Decisions</h3>
+            <ul>
+                <li>Do you wrap ALL functions or let users opt-in?</li>
+                <li>What's the overhead of tracking? Is it acceptable?</li>
+                <li>Should you track arguments to function calls?</li>
+                <li>How do you handle callbacks and higher-order functions?</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You can wrap functions and build a runtime graph showing which functions called which during execution.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 5 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">5</div>
+            <h2 class="phase-title">The Registry: Central Source of Truth</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Lookup Table Design</h3>
+                <div class="card-content">
+                    <p>How to store and retrieve callables:</p>
+                    <ul>
+                        <li>What's the key? (module name + qualified name?)</li>
+                        <li>What's the value? (the callable object)</li>
+                        <li>How to handle updates?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Indirection Layer</h3>
+                <div class="card-content">
+                    <p>The solution to the reference problem:</p>
+                    <ul>
+                        <li>Don't store direct references</li>
+                        <li>Store lookups instead</li>
+                        <li>Always fetch latest at call time</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Proxies or Smart Pointers?</h3>
+                <div class="card-content">
+                    <p>Different approaches:</p>
+                    <ul>
+                        <li>Proxy objects that forward calls</li>
+                        <li>Registry lookups at call time</li>
+                        <li>What are the tradeoffs?</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="exploration">
+            <h4>Prototype This</h4>
+            <p>Build a simple registry that can store functions by name and retrieve them. Then build a proxy that always calls the latest version from the registry. Test that updating the registry makes the proxy call new code.</p>
+        </div>
+        
+        <div class="hint">
+            <h4>Think About Transparency</h4>
+            <p>Can you make proxies that look exactly like the real functions? Consider <code>__call__</code>, <code>__getattr__</code>, and <code>functools.wraps</code>.</p>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You have a registry that can store and update callables, and a way to always get the latest version without broken references.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 6 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">6</div>
+            <h2 class="phase-title">Integration: Putting It All Together</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>The Reload Pipeline</h3>
+                <div class="card-content">
+                    <p>When a file changes:</p>
+                    <ol style="padding-left: 20px;">
+                        <li>Detect which module changed</li>
+                        <li>Use dependency graph to find affected modules</li>
+                        <li>Reload modules in correct order</li>
+                        <li>Re-scan with AST extractor</li>
+                        <li>Update registry with new callables</li>
+                        <li>Invalidate call graph caches</li>
+                    </ol>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>State Management</h3>
+                <div class="card-content">
+                    <p>The tricky part - what persists?</p>
+                    <ul>
+                        <li>Which results should be cached?</li>
+                        <li>Which should be recomputed?</li>
+                        <li>How does user control this?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>User Interface</h3>
+                <div class="card-content">
+                    <p>How do users interact with your system?</p>
+                    <ul>
+                        <li>Decorators for marking functions?</li>
+                        <li>Context managers for sessions?</li>
+                        <li>Explicit reload calls?</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="challenge">
+            <h4>The Big Challenge: Correctness</h4>
+            <p>How do you ensure reloading happens in the right order? If Module A depends on B and C, and C depends on B, what's the correct reload sequence? This is a topological sort problem!</p>
+        </div>
+        
+        <div class="questions">
+            <h3>Architecture Questions</h3>
+            <ul>
+                <li>Should the system auto-reload on file changes or wait for manual trigger?</li>
+                <li>How do you handle errors during reload? Roll back?</li>
+                <li>What's the API for freezing/unfreezing cached results?</li>
+                <li>How do you integrate with existing code minimally?</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Milestone</h3>
+            <p>You can reload a changed module and all its dependencies correctly, with the call graph and registry updating automatically.</p>
+        </div>
+    </div>
+    
+    <!-- PHASE 7 -->
+    <div class="phase">
+        <div class="phase-header">
+            <div class="phase-number">7</div>
+            <h2 class="phase-title">Polish: Edge Cases and Features</h2>
+        </div>
+        
+        <div class="card-grid">
+            <div class="card">
+                <h3>Error Handling</h3>
+                <div class="card-content">
+                    <p>What could go wrong?</p>
+                    <ul>
+                        <li>Syntax errors in reloaded code</li>
+                        <li>Import errors</li>
+                        <li>Runtime errors during init</li>
+                        <li>How to recover gracefully?</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Advanced Cases</h3>
+                <div class="card-content">
+                    <p>Can you handle:</p>
+                    <ul>
+                        <li>Class instances (updating methods on live objects)</li>
+                        <li>Closures and nested functions</li>
+                        <li>Decorators and wrapped functions</li>
+                        <li>Async functions and coroutines</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Developer Experience</h3>
+                <div class="card-content">
+                    <p>Make it pleasant to use:</p>
+                    <ul>
+                        <li>Clear error messages</li>
+                        <li>Visual feedback (what was reloaded?)</li>
+                        <li>Debugging tools (view graphs)</li>
+                        <li>Performance monitoring</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <div class="exploration">
+            <h4>Testing Ideas</h4>
+            <ul>
+                <li>Create a deeply nested module structure and reload leaves</li>
+                <li>Test with circular dependencies</li>
+                <li>Try reloading during active execution</li>
+                <li>Benchmark the overhead of tracking</li>
+            </ul>
+        </div>
+        
+        <div class="milestone">
+            <h3>Final Milestone</h3>
+            <p>You have a robust hot reloading system that handles edge cases gracefully and provides a good developer experience.</p>
+        </div>
+    </div>
+    
+    <!-- FINAL THOUGHTS -->
+    <div class="phase" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+        <div class="phase-header" style="border-bottom-color: white;">
+            <div class="phase-number" style="background: white; color: #f5576c;">🎓</div>
+            <h2 class="phase-title" style="color: white;">Learning by Doing</h2>
+        </div>
+        
+        <div style="font-size: 1.1em; line-height: 1.8;">
+            <p><strong>Remember:</strong> The goal isn't to build the perfect system on the first try. It's to understand the problem deeply.</p>
+            
+            <p><strong>Iterate:</strong> Build the simplest version first, then add complexity. Start with just functions, then add classes, then methods, then lambdas.</p>
+            
+            <p><strong>Experiment:</strong> Break things! Try to make your system fail. That's how you discover what needs to be handled.</p>
+            
+            <p><strong>Question everything:</strong> Why this data structure? Why this approach? What are the alternatives? What are the tradeoffs?</p>
+            
+            <p style="margin-top: 30px; font-size: 1.2em; text-align: center; font-weight: bold;">
+                The best way to learn is to struggle with the problem yourself. 🚀
+            </p>
+        </div>
+    </div>
+    
+</body>
+</html>
