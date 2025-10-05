@@ -1,0 +1,15 @@
+{
+  "configurations": [
+    {
+      "name": "Debug",
+      "type": "python",
+      "request": "launch",
+      "python": "/Users/cactus/miniforge3/envs/matchbox/bin/python",
+      "autoReload": { "enable": true },
+      "program": "${workspaceFolder}/main.py",
+      "args": [],
+      "env": {"DEBUG": "1"}
+    }
+    
+  ]
+}
