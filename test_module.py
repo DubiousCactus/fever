@@ -1,6 +1,12 @@
 from typing import List
 
+import rich
+import torch
+
 from other_test_module import other_function
+
+_ = rich
+_ = torch
 
 
 def module_level_func(name: str):

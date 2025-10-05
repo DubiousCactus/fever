@@ -8,6 +8,7 @@
 
 import importlib
 import inspect
+import os
 import sys
 from collections import defaultdict
 from importlib.abc import MetaPathFinder
@@ -43,6 +44,24 @@ class ImportHook(MetaPathFinder):
         package. When passed in, target is a module object that the finder may use to
         make a more educated guess about what spec to return.
         """
+        found_local = False
+        for root, files, dirs in os.walk(os.path.curdir):
+            if fullname in root:
+                found_local = True
+                break
+            for f in files:
+                if fullname in f:
+                    found_local = True
+                    break
+            for d in dirs:
+                if fullname in d:
+                    found_local = True
+                    break
+        if not found_local:
+            self._console.print(
+                f"Skipping non-user module '{fullname}'", style="red on black"
+            )
+            return None
         caller_module = (None, None)
         for frame in inspect.stack():
             if frame.code_context is None:
@@ -62,9 +81,12 @@ class ImportHook(MetaPathFinder):
         return None  # Fallback to other finders (default behaviour of import())
 
     def get_dependencies(self, module_name: str) -> List[Tuple[str, str, object]]:
+        """
+        Return a list of dependencies as tuples of module (name, path and object), given
+        a query module name.
+        """
         deps = []
         for i, (name, path) in enumerate(self._dependencies[module_name]):
-            # if path is None:
             module = importlib.import_module(name)
             path = inspect.getfile(module)
             self._console.print(

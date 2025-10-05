@@ -40,6 +40,11 @@ class ASTAnalyzer(ast.NodeVisitor):
         }
 
     def analyze(self, obj: object, name: str) -> MitaineModule:
+        """
+        Analyze the AST of a given object (typically a module, but possibly a class or
+        other) and return a MitaineModule which tracks module-level functions, classes,
+        lambdas and methods.
+        """
         self._reset_context()
         source = inspect.getsource(obj)
         self._console.print(
