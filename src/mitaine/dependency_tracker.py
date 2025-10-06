@@ -136,7 +136,7 @@ class DependencyTrackerV1(MetaPathFinder):
 
 
 class DependencyTrackerV2:
-    ignore_dirs = [".git", "__pycache__", ".vscode"]
+    ignore_dirs = [".git", "__pycache__", ".vscode", ".venv"]
 
     def __init__(self, console: Console):
         self._console = console

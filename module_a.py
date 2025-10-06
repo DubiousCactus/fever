@@ -1,6 +1,8 @@
-from test_module_b import TestCase
+import mitaine
+from module_b import TestCase
 
 
+@mitaine.track_calls
 def function():
     print("test.function()")
     test_module = TestCase()
