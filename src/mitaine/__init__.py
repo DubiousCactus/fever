@@ -8,7 +8,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable
 
-from .dependency_tracker import DependencyTrackerV2 as DependencyTracker
+from .dependency_tracker import DependencyTracker
 
 
 def track_calls(func: Callable):

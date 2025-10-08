@@ -3,7 +3,6 @@ import os
 from rich.console import Console
 from rich.pretty import Pretty
 
-# from dependency_tracker import DependencyTrackerV2
 import mitaine
 
 
