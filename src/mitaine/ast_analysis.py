@@ -52,10 +52,11 @@ class MitaineModule:
 class ASTAnalyzer(ast.NodeVisitor):
     def __init__(self, console: Console):
         self._console = console
-        self._current_class = deque()
+        self._context_stack = deque()
         self._context = {}
 
     def _reset_context(self):
+        self._context_stack = deque()
         self._context = {
             "classes": [],
             "functions": [],
@@ -71,6 +72,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         """
         self._reset_context()
         source = inspect.getsource(obj)
+        self._context_stack.append(obj)
         self._console.print(
             Panel(
                 Syntax(source, lexer="python", theme="dracula"),
@@ -104,36 +106,40 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-        self._context["classes"].append(MitaineClass(node.name, uuid1(), node))
-        self._current_class.append(node)
+        self._context_stack.append(getattr(self._context_stack[-1], node.name))
+        self._context["classes"].append(
+            MitaineClass(node.name, uuid1(), node, self._context_stack[-1])
+        )
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
         for el in node.body:
             self._console.print(f"\t|{el.name}", style="green on black")
         self.generic_visit(node)
-        self._current_class.pop()
+        self._context_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
-        module_level = len(self._current_class) == 0
+        module_level = len(self._context_stack) == 0
         color = "yellow" if module_level else "green"
         prefix = "module" if module_level else "class"
         self._console.print(Pretty(node))
         self._console.print(
-            f"\[{prefix}] {node.name}: ({[arg.arg for arg in node.args.args]})",
+            f"\\[{prefix}] {node.name}: (args={[arg.arg for arg in node.args.args]})",
             style=f"{color} on black",
         )
-        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [])
+        code_obj = None
+        code_obj = getattr(self._context_stack[-1], node.name)
+        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [], code_obj)
         if module_level:
             self._context["functions"].append(mitaine_obj)
         else:
-            self._context["methods"][self._current_class[-1]].append(mitaine_obj)
+            self._context["methods"][self._context_stack[-1]].append(mitaine_obj)
         self.generic_visit(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
         self._console.print(Pretty(node))
         self._console.print(
-            f"{node}: ({[arg.arg for arg in node.args.args]})",
+            f"{node}: (args={[arg.arg for arg in node.args.args]})",
             style="green on black",
         )
-        self._context["lambdas"].append(MitaineLambda(uuid1(), node, []))
+        self._context["lambdas"].append(MitaineLambda(uuid1(), node, [], None))
         self.generic_visit(node)
