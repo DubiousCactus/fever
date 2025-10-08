@@ -15,17 +15,19 @@ if __name__ == "__main__":
     console = Console() if bool(int(os.getenv("DEBUG", False))) else NoPrint()
     dep_tracker = mitaine.DependencyTracker(console)
     dep_tracker.setup(show_skips=False)
+    call_tracker = mitaine.CallTracker(console)
+    call_tracker.track(dep_tracker)
 
     print("Loading module_a")
     import module_a
 
     print("Calling module_a.function()")
     module_a.function()
-    module_a.function()
-    module_a.function()
-    module_a.function()
-    module_a.function()
-    module_a.function()
+    # module_a.function()
+    # module_a.function()
+    # module_a.function()
+    # module_a.function()
+    # module_a.function()
 
     # _ = input("Press a key to reload")
     # print("Reloading test module")

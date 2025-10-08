@@ -9,7 +9,7 @@ import ast
 import inspect
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid1
 
 from rich.console import Console
@@ -23,6 +23,7 @@ class MitaineClass:
     name: str
     uid: UUID
     ast_node: ast.ClassDef
+    obj: object
 
 
 @dataclass
@@ -31,6 +32,7 @@ class MitaineFunction:
     uid: UUID
     ast_node: ast.FunctionDef
     args: List[Any]
+    obj: object
 
 
 @dataclass
@@ -38,6 +40,7 @@ class MitaineLambda:
     uid: UUID
     ast_node: ast.Lambda
     args: List[Any]
+    obj: Optional[object] = None  # FIXME: I don't know how to handle this yet
 
 
 @dataclass
@@ -64,7 +67,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             "methods": defaultdict(list),
         }
 
-    def analyze(self, obj: object, name: str, show_ast=False) -> MitaineModule:
+    def analyze(self, name: str, obj: object, show_ast=False) -> MitaineModule:
         """
         Analyze the AST of a given object (typically a module, but possibly a class or
         other) and return a MitaineModule which tracks module-level functions, classes,
@@ -106,9 +109,10 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-        self._context_stack.append(getattr(self._context_stack[-1], node.name))
+        class_obj = getattr(self._context_stack[-1], node.name)
+        self._context_stack.append(class_obj)
         self._context["classes"].append(
-            MitaineClass(node.name, uuid1(), node, self._context_stack[-1])
+            MitaineClass(node.name, uuid1(), node, class_obj)
         )
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
@@ -118,7 +122,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._context_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
-        module_level = len(self._context_stack) == 0
+        module_level = not inspect.isclass(self._context_stack[-1])
         color = "yellow" if module_level else "green"
         prefix = "module" if module_level else "class"
         self._console.print(Pretty(node))
@@ -126,9 +130,9 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"\\[{prefix}] {node.name}: (args={[arg.arg for arg in node.args.args]})",
             style=f"{color} on black",
         )
-        code_obj = None
-        code_obj = getattr(self._context_stack[-1], node.name)
-        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [], code_obj)
+        func_obj = None
+        func_obj = getattr(self._context_stack[-1], node.name)
+        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [], func_obj)
         if module_level:
             self._context["functions"].append(mitaine_obj)
         else:

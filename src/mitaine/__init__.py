@@ -8,6 +8,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable
 
+from .call_tracker import CallTracker
 from .dependency_tracker import DependencyTracker
 
 

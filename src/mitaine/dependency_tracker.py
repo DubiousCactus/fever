@@ -15,7 +15,7 @@ import sys
 from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
-from types import CodeType, ModuleType
+from types import ModuleType
 from typing import List, Optional, Sequence, Tuple
 
 import networkx as nx
@@ -28,7 +28,7 @@ class NewImportHook(metaclass=abc.ABCMeta):
 
 
 class ModuleLoadHook(metaclass=abc.ABCMeta):
-    def on_module_load(self, module_name: str, code_str: str) -> Optional[CodeType]:
+    def on_module_load(self, module_name: str, code_str: str) -> None:
         raise NotImplementedError
 
 
@@ -64,7 +64,6 @@ class DependencyTracker(MetaPathFinder, Loader):
                 sys.meta_path.remove(finder)
 
     def create_module(self, spec: ModuleSpec) -> ModuleType | None:
-        print("create_module(), name=", spec.name)
         return None  # Fallback to default machinery
 
     def exec_module(self, module) -> None:
@@ -76,14 +75,13 @@ class DependencyTracker(MetaPathFinder, Loader):
         assert file_path is not None
         with open(file_path) as f:
             self._console.print(
-                f"Loading module from {module.__file__}...", style="black on white"
+                f"Loading {module.__name__} from {module.__file__}...",
+                style="black on white",
             )
             code_str = f.read()  # Read the source code
-        code = None
+        exec(code_str, module.__dict__)  # Execute the code in the module's namespace
         for hook in self._module_load_hooks:
-            code = hook.on_module_load(module.__name__, code_str)
-        code = code or code_str
-        exec(code, module.__dict__)  # Execute the code in the module's namespace
+            hook.on_module_load(module.__name__, code_str)
 
     # def _audit_hook(self, event_name: str, args):
     #     if event_name == "import":
