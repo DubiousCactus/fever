@@ -5,6 +5,7 @@ from module_c import other_function
 
 def module_level_func(name: str):
     print(f"Hello, {name}!")
+    other_module_level_func("yo")
 
 
 class TestCase:

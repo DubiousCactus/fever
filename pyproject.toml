@@ -1,7 +1,7 @@
 [project]
 name = "mitaine"
 version = "0.1.0"
-description = "Add your description here"
+description = "A very capable and fully transparent hot-reloading system."
 readme = "README.md"
 authors = [
     { name = "Theo", email = "theo.morales.fr@gmail.com" }

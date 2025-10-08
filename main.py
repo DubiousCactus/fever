@@ -41,6 +41,8 @@ if __name__ == "__main__":
     console.print(Pretty(dep_tracker.get_dependencies("module_a")))
     console.print("Modules which depend on 'module_c':")
     console.print(Pretty(dep_tracker.get_dependencies("module_c")))
+    if bool(int(os.getenv("VIZ", False))):
+        call_tracker.plot_call_graph()
     # _ = ASTAnalyzer
     # _ = Pretty
     # _ = Panel
