@@ -48,12 +48,13 @@ class CallTracker(ModuleLoadHook):
             # methods? I'll know more as I implement the rest, and I'll revisit this
             # part.
             # TODO: Handle edge cases (recursion, partials, wrappers, etc.)
-            caller_frame = inspect.currentframe().f_back
+            caller_frame = sys._getframe(1)
             caller_obj, caller_instance, callee_instance = None, None, None
             if class_obj is not None and isinstance(args[0], class_obj):
                 callee_instance = args[0]
-            if obj := caller_frame.f_locals.get("self", None):
-                # This is an object method!
+            if obj := caller_frame.f_locals.get(
+                "self", None
+            ):  # This is an object method!
                 caller_name = caller_frame.f_code.co_qualname
                 caller_obj = obj
                 try:
@@ -105,7 +106,7 @@ class CallTracker(ModuleLoadHook):
                     self._call_graph[key][func]["weight"] = 1
                 else:
                     self._call_graph[key][func]["weight"] += 1
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
 
         return wrapper
 
@@ -146,8 +147,9 @@ class CallTracker(ModuleLoadHook):
                 )
         for lambda_ in self._callables[module_name].lambdas:
             # NOTE: We can't really track lambdas as they are anonymous and we have no
-            # way to hook them unless we do some AST rewriting, which is out of scope
-            # for this project.
+            # way to hook them unless we do some AST rewriting?. But I have been able to
+            # track lambdas *reactively* at crash time, so I may adopt this strategy
+            # later.
             pass
 
     def plot_call_graph(self):

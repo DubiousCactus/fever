@@ -149,5 +149,8 @@ class ASTAnalyzer(ast.NodeVisitor):
         # at crash time, in the stack trace. But we can't do it proactively ahead of
         # crash time due to their anonymous nature.
         func_obj = None
+        # TODO: Maybe we can't get their code object ahead of time, but we can at least
+        # collect their arguments, which we could also track. We need to do this for all
+        # callables proably.
         self._context["lambdas"].append(FeverLambda(uuid1(), node, [], func_obj))
         self.generic_visit(node)

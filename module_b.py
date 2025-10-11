@@ -18,7 +18,7 @@ class TestCase:
         self.callable("TestCase instance")
 
     def elaborate_function(self, arg1: str, arg2: List[bool]):
-        self.child.nested_test(arg1)
+        print(f"Result of nested test: {self.child.nested_test(arg1)}")
 
     def hello(self, name: str):
         a = lambda x: x.upper()
@@ -28,8 +28,9 @@ class TestCase:
         def __init__(self, owner):
             self.owner = owner
 
-        def nested_test(self, name: str):
+        def nested_test(self, name: str) -> int:
             self.owner.hello(name)
+            return 1234
 
 
 def other_module_level_func(name: str):
