@@ -34,11 +34,8 @@ class CallTracker(ModuleLoadHook):
     def track_calls(
         self, func: Callable, class_obj: Optional[object] = None
     ) -> Callable:
-        callers = defaultdict(int)
-
         @wraps(func)
         def wrapper(*args, **kwargs):
-            nonlocal callers
             nonlocal self
             # WARN: Properly track the caller object! We want the parent if it was an
             # object, or if it was within another function. I made some attempt at this,
@@ -73,7 +70,16 @@ class CallTracker(ModuleLoadHook):
                 except Exception as e:
                     print(e)
                     caller_obj = None
+            elif (
+                # "__name__" in caller_frame.f_locals
+                # and caller_frame.f_locals["__name__"] == "__main__"
+                caller_frame.f_globals["__name__"] == "__main__"
+            ):
+                # Most likely the entry point
+                caller_name = caller_frame.f_locals["__name__"]
+                caller_obj = sys.modules["__main__"]
             else:
+                # Module-level functions
                 caller_name = caller_frame.f_code.co_qualname
                 namespace = caller_frame.f_globals["__name__"]
                 try:
@@ -82,11 +88,9 @@ class CallTracker(ModuleLoadHook):
                         caller_obj = getattr(caller_obj, "__wrapped__")
                 except:
                     caller_obj = None
-            callers[caller_name] += 1
             self._console.print(
                 f"Callable '{func.__name__}' defined in '{inspect.getmodule(func).__name__}' "
-                + f"was called by '{caller_name}' at line {caller_frame.f_lineno} "
-                + f"for the {callers[caller_name]}th time",
+                + f"was called by '{caller_name}' at line {caller_frame.f_lineno}",
                 style="green on black",
             )
             if caller_obj is None:
