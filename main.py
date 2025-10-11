@@ -7,20 +7,33 @@ if __name__ == "__main__":
     fever = Fever()
     fever.setup()
 
+    # Example 1:
+    # print("Loading module_a")
+    # import module_a
+    #
+    # print("Calling module_a.function()")
+    # module_a.function()
+    #
+    # _ = input("Press a key to reload")
+    # fever.reload()  # Only reloads callables that changed on disk
+    # print("Calling module_a.function() on a fresh code base with maintained state:")
+    # module_a.function()
+
+    # Example 2:
     print("Loading module_a")
     import module_a
 
     print("Calling module_a.function()")
     module_a.function()
 
-    # _ = input("Press a key to reload")
-    # print("Reloading test module")
-    # new_test = importlib.reload(test)
-    # print("Calling test.function again")
-    # new_test.function()
-
     if viz:
         fever.plot_dependency_graph()
         fever.plot_call_graph()
+
+    # _ = input("Press a key to reload and rerun")
+    # fever.reload()  # Only reloads callables that changed on disk
+    # fever.rerun(
+    #     entry_point="idk-yet-but-probably-find-UUID-from-func-name"
+    # )  # Only re-executes reloaded code, but goes through the call graph from entry point
 
     fever.cleanup()

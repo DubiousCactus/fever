@@ -18,7 +18,8 @@ from rich.syntax import Syntax
 
 from .utils import ConsoleInterface
 
-# TODO: Replace dataclasses with namedtuples, they are more efficient
+# TODO: Replace dataclasses with namedtuples, they are more efficient. Or if we want to
+# keep type hints, custom classes with __slot__ should be more efficient as well.
 
 
 @dataclass
@@ -49,6 +50,7 @@ class FeverLambda:
 @dataclass
 class FeverModule:
     root: str
+    obj: object
     classes: List[FeverClass]
     functions: List[FeverFunction]
     methods: Dict[FeverClass, List[FeverFunction]]
@@ -105,6 +107,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self.visit(ast_root)
         return FeverModule(
             root=name,
+            obj=obj,
             classes=self._context["classes"],
             functions=self._context["functions"],
             methods=self._context["methods"],

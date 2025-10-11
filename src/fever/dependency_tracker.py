@@ -6,11 +6,9 @@
 # Distributed under terms of the MIT license.
 
 
-import abc
 import builtins
 import importlib
 import inspect
-import os
 import sys
 from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
@@ -20,45 +18,9 @@ from typing import List, Optional, Sequence, Tuple
 
 import networkx as nx
 
-from .utils import ConsoleInterface
+from fever.hooks import ModuleLoadHook, NewImportHook
 
-
-def is_user_module(
-    module_name: str, ignore_dirs: List[str], module_path: Optional[str] = None
-) -> Tuple[bool, Optional[str]]:
-    # FIXME: This current solution is kinda fragile. I need something robust.
-    if module_name == "":
-        return False, None
-    module_dir = os.path.dirname(module_path) if module_path is not None else None
-    for root, dirs, files in os.walk(os.path.curdir):
-        try:
-            for ignore_dir in ignore_dirs:
-                dirs[:] = [d for d in dirs if d == ignore_dir]
-        except Exception:
-            pass
-        if module_dir is not None and os.path.basename(module_dir) == root:
-            return True, module_path
-        for f in files:
-            if f.split(".")[0] == module_name:
-                return True, os.path.join(root, f)
-            elif module_path is not None and os.path.basename(module_path) == f:
-                return True, module_path
-        for d in dirs:
-            if module_name == d:
-                return True, os.path.join(root, d, "__init__.py")
-            elif module_dir == d:
-                return True, module_path
-    return False, None
-
-
-class NewImportHook(metaclass=abc.ABCMeta):
-    def on_new_import(self, module_name: str, module: ModuleType) -> ModuleType:
-        raise NotImplementedError
-
-
-class ModuleLoadHook(metaclass=abc.ABCMeta):
-    def on_module_load(self, module_name: str, code_str: str) -> None:
-        raise NotImplementedError
+from .utils import ConsoleInterface, is_user_module
 
 
 class DependencyTracker(MetaPathFinder, Loader):
@@ -208,7 +170,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         """
         deps = []
         for dep_name in self.get_dependencies(module_name):
-            module = importlib.import_module(dep_name)
+            module = sys.modules[dep_name]
             path = inspect.getfile(module)
             self._console.print(
                 f"Found module '{module_name}''s path: <{path}>",
@@ -223,3 +185,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         plt.tight_layout()
         nx.draw_networkx(self._dep_graph, arrows=True)
         plt.show()
+
+    @property
+    def all_imports(self) -> List[str]:
+        return self._dep_graph.nodes
