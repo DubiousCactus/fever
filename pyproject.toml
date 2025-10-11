@@ -1,7 +1,7 @@
 [project]
-name = "mitaine"
+name = "fever"
 version = "0.1.0"
-description = "A very capable and fully transparent hot-reloading system."
+description = "A very capable and fully transparent live debugging and hot-reloading system."
 readme = "README.md"
 authors = [
     { name = "Theo", email = "theo.morales.fr@gmail.com" }

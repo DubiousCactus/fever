@@ -14,7 +14,7 @@ from typing import Callable, Dict
 import networkx as nx
 from rich.console import Console
 
-from .ast_analysis import ASTAnalyzer, MitaineModule
+from .ast_analysis import ASTAnalyzer, FeverModule
 from .dependency_tracker import DependencyTracker, ModuleLoadHook
 
 
@@ -23,7 +23,7 @@ class CallTracker(ModuleLoadHook):
         self._console = console
         self._call_graph = nx.DiGraph()
         self._ast_analyzer = ASTAnalyzer(console)
-        self._callables: Dict[str, MitaineModule] = {}
+        self._callables: Dict[str, FeverModule] = {}
 
     def track(self, dependency_tracker: DependencyTracker):
         """
@@ -99,7 +99,7 @@ class CallTracker(ModuleLoadHook):
             module_name, module, show_ast=False
         )
         #
-        # # TODO: For each callable in the returned MitaineModule, wrap it in the tracker
+        # # TODO: For each callable in the returned FeverModule, wrap it in the tracker
         # # decorator.
         # # Let's start with module level functions!
         for func in self._callables[module_name].functions:

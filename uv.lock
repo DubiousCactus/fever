@@ -206,7 +206,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mitaine"
+name = "fever"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

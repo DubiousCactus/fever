@@ -3,7 +3,7 @@ import os
 from rich.console import Console
 from rich.pretty import Pretty
 
-import mitaine
+import fever
 
 
 class NoPrint:
@@ -13,9 +13,9 @@ class NoPrint:
 
 if __name__ == "__main__":
     console = Console() if bool(int(os.getenv("DEBUG", False))) else NoPrint()
-    dep_tracker = mitaine.DependencyTracker(console)
+    dep_tracker = fever.DependencyTracker(console)
     dep_tracker.setup(show_skips=False)
-    call_tracker = mitaine.CallTracker(console)
+    call_tracker = fever.CallTracker(console)
     call_tracker.track(dep_tracker)
 
     print("Loading module_a")
@@ -51,8 +51,8 @@ if __name__ == "__main__":
     # for dep_name, dep_path, dep_module in dep_tracker.get_dependent_modules(
     #     "module_c"
     # ):
-    #     mitaine_module = analyzer.analyze(dep_module, dep_name, show_ast=False)
-    #     console.print(Panel(Pretty(mitaine_module)))
+    #     fever_module = analyzer.analyze(dep_module, dep_name, show_ast=False)
+    #     console.print(Panel(Pretty(fever_module)))
     #     break
 
     dep_tracker.cleanup()

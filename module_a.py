@@ -1,10 +1,10 @@
-# import mitaine
+# import fever
 import random
 
 from module_b import TestCase, module_level_func, other_module_level_func
 
 
-# @mitaine.track_calls
+# @fever.track_calls
 def function():
     print("test.function()")
     test_module = TestCase()

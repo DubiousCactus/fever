@@ -17,9 +17,11 @@ from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.syntax import Syntax
 
+# TODO: Replace dataclasses with namedtuples, they are more efficient
+
 
 @dataclass
-class MitaineClass:
+class FeverClass:
     name: str
     uid: UUID
     ast_node: ast.ClassDef
@@ -27,7 +29,7 @@ class MitaineClass:
 
 
 @dataclass
-class MitaineFunction:
+class FeverFunction:
     name: str
     uid: UUID
     ast_node: ast.FunctionDef
@@ -36,7 +38,7 @@ class MitaineFunction:
 
 
 @dataclass
-class MitaineLambda:
+class FeverLambda:
     uid: UUID
     ast_node: ast.Lambda
     args: List[Any]
@@ -44,12 +46,12 @@ class MitaineLambda:
 
 
 @dataclass
-class MitaineModule:
+class FeverModule:
     root: str
-    classes: List[MitaineClass]
-    functions: List[MitaineFunction]
-    methods: Dict[MitaineClass, List[MitaineFunction]]
-    lambdas: List[MitaineLambda]
+    classes: List[FeverClass]
+    functions: List[FeverFunction]
+    methods: Dict[FeverClass, List[FeverFunction]]
+    lambdas: List[FeverLambda]
 
 
 class ASTAnalyzer(ast.NodeVisitor):
@@ -67,10 +69,10 @@ class ASTAnalyzer(ast.NodeVisitor):
             "methods": defaultdict(list),
         }
 
-    def analyze(self, name: str, obj: object, show_ast=False) -> MitaineModule:
+    def analyze(self, name: str, obj: object, show_ast=False) -> FeverModule:
         """
         Analyze the AST of a given object (typically a module, but possibly a class or
-        other) and return a MitaineModule which tracks module-level functions, classes,
+        other) and return a feverModule which tracks module-level functions, classes,
         lambdas and methods.
         """
         self._reset_context()
@@ -100,7 +102,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             )
         self._console.print("Analyzing callables...", style="green on black")
         self.visit(ast_root)
-        return MitaineModule(
+        return FeverModule(
             root=name,
             classes=self._context["classes"],
             functions=self._context["functions"],
@@ -111,9 +113,7 @@ class ASTAnalyzer(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         class_obj = getattr(self._context_stack[-1], node.name)
         self._context_stack.append(class_obj)
-        self._context["classes"].append(
-            MitaineClass(node.name, uuid1(), node, class_obj)
-        )
+        self._context["classes"].append(FeverClass(node.name, uuid1(), node, class_obj))
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
         for el in node.body:
@@ -132,11 +132,11 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
         func_obj = None
         func_obj = getattr(self._context_stack[-1], node.name)
-        mitaine_obj = MitaineFunction(node.name, uuid1(), node, [], func_obj)
+        fever_obj = FeverFunction(node.name, uuid1(), node, [], func_obj)
         if module_level:
-            self._context["functions"].append(mitaine_obj)
+            self._context["functions"].append(fever_obj)
         else:
-            self._context["methods"][self._context_stack[-1]].append(mitaine_obj)
+            self._context["methods"][self._context_stack[-1]].append(fever_obj)
         self.generic_visit(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
@@ -145,5 +145,5 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"{node}: (args={[arg.arg for arg in node.args.args]})",
             style="green on black",
         )
-        self._context["lambdas"].append(MitaineLambda(uuid1(), node, [], None))
+        self._context["lambdas"].append(FeverLambda(uuid1(), node, [], None))
         self.generic_visit(node)
