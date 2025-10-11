@@ -9,6 +9,7 @@ def function():
     print("test.function()")
     test_module = TestCase()
     test_module()
+    test_module.elaborate_function("world", [True, False, True])
 
 
 def second_function():

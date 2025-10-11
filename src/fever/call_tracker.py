@@ -9,7 +9,7 @@ import inspect
 import sys
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, Dict
+from typing import Callable, Dict, Optional
 
 import networkx as nx
 from rich.console import Console
@@ -31,7 +31,9 @@ class CallTracker(ModuleLoadHook):
         """
         dependency_tracker.register_module_load_hook(self)
 
-    def track_calls(self, func: Callable):
+    def track_calls(
+        self, func: Callable, class_obj: Optional[object] = None
+    ) -> Callable:
         callers = defaultdict(int)
 
         @wraps(func)
@@ -41,13 +43,35 @@ class CallTracker(ModuleLoadHook):
             # WARN: Properly track the caller object! We want the parent if it was an
             # object, or if it was within another function. I made some attempt at this,
             # but I need to test it and make sure it handles all edge cases.
+            # Anyway, this has become a bit of a mess because I'm not sure what I need
+            # as my caller/callee objects. Function addresses? Class instances? Bounded
+            # methods? I'll know more as I implement the rest, and I'll revisit this
+            # part.
             # TODO: Handle edge cases (recursion, partials, wrappers, etc.)
             caller_frame = inspect.currentframe().f_back
-            caller_obj = None
-            if obj := caller_frame.f_locals.get("self"):
+            caller_obj, caller_instance, callee_instance = None, None, None
+            if class_obj is not None and isinstance(args[0], class_obj):
+                callee_instance = args[0]
+            if obj := caller_frame.f_locals.get("self", None):
                 # This is an object method!
                 caller_name = caller_frame.f_code.co_qualname
                 caller_obj = obj
+                try:
+                    caller_obj = getattr(
+                        caller_obj, caller_frame.f_code.co_name
+                    )  # Get the method object from the instance 'caller_obj'
+                    # FIXME: When I unwrap class methods, I loose their object context
+                    # in the __str__ or __repr__ methods.  Maybe I need a class wrapper
+                    # that intercepts __getattr__ and __setattr__ calls?
+                    # NOTE: args[0] is the instance in the case where the callee is a
+                    # method
+                    caller_instance = getattr(caller_obj, "__self__", None)
+                    while hasattr(caller_obj, "__wrapped__"):
+                        caller_obj = getattr(caller_obj, "__wrapped__")
+                        setattr(caller_obj, "__self__", caller_instance)
+                except Exception as e:
+                    print(e)
+                    caller_obj = None
             else:
                 caller_name = caller_frame.f_code.co_qualname
                 namespace = caller_frame.f_globals["__name__"]
@@ -64,18 +88,29 @@ class CallTracker(ModuleLoadHook):
                 + f"for the {callers[caller_name]}th time",
                 style="green on black",
             )
-            key = caller_obj or caller_name
-            self._call_graph.add_edge(key, func)
-            if "weight" not in self._call_graph[key][func]:
-                self._call_graph[key][func]["weight"] = 1
+            if caller_obj is None:
+                self._console.print(
+                    f"Could not resolve caller object for caller named '{caller_name}'",
+                    style="red on black",
+                )
             else:
-                self._call_graph[key][func]["weight"] += 1
+                key = caller_obj
+                self._call_graph.add_edge(
+                    key,
+                    func,
+                    caller_cls_instance=caller_instance,
+                    callee_cls_instance=callee_instance,
+                )
+                if "weight" not in self._call_graph[key][func]:
+                    self._call_graph[key][func]["weight"] = 1
+                else:
+                    self._call_graph[key][func]["weight"] += 1
             func(*args, **kwargs)
 
         return wrapper
 
     def on_module_load(self, module_name: str, code_str: str) -> None:
-        if module_name == "mitaine":
+        if module_name == "fever":
             # TODO: Find a better way? But in fact, our import hook already excludes
             # non-user code, so this problem arises only when testing mitaine from
             # mitaine's project!
@@ -98,20 +133,29 @@ class CallTracker(ModuleLoadHook):
         self._callables[module_name] = self._ast_analyzer.analyze(
             module_name, module, show_ast=False
         )
-        #
-        # # TODO: For each callable in the returned FeverModule, wrap it in the tracker
-        # # decorator.
-        # # Let's start with module level functions!
         for func in self._callables[module_name].functions:
             assert isinstance(func.obj, object)
             setattr(module, func.name, self.track_calls(func.obj))
+        for class_, methods in self._callables[module_name].methods.items():
+            assert isinstance(class_, object)
+            for method in methods:
+                setattr(
+                    class_,
+                    method.name,
+                    self.track_calls(method.obj, class_obj=class_),
+                )
+        for lambda_ in self._callables[module_name].lambdas:
+            # NOTE: We can't really track lambdas as they are anonymous and we have no
+            # way to hook them unless we do some AST rewriting, which is out of scope
+            # for this project.
+            pass
 
     def plot_call_graph(self):
         from matplotlib import pyplot as plt
 
         plt.tight_layout()
         pos = nx.spring_layout(
-            self._call_graph, seed=2
+            self._call_graph  # , seed=1
         )  # positions for all nodes - seed for reproducibility
         edge_labels = nx.get_edge_attributes(self._call_graph, "weight")
         nx.draw_networkx(self._call_graph, pos, arrows=True)

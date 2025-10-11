@@ -145,5 +145,9 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"{node}: (args={[arg.arg for arg in node.args.args]})",
             style="green on black",
         )
-        self._context["lambdas"].append(FeverLambda(uuid1(), node, [], None))
+        # TODO: Figure out some trick to map lambdas? I know I was able to find lambdas
+        # at crash time, in the stack trace. But we can't do it proactively ahead of
+        # crash time due to their anonymous nature.
+        func_obj = None
+        self._context["lambdas"].append(FeverLambda(uuid1(), node, [], func_obj))
         self.generic_visit(node)

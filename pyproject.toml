@@ -7,7 +7,7 @@ authors = [
     { name = "Theo", email = "theo.morales.fr@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = ["networkx", "matplotlib"]
+dependencies = ["networkx", "matplotlib", "pdbpp"]
 
 [build-system]
 requires = ["uv_build>=0.8.23,<0.9.0"]
