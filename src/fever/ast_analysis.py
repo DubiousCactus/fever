@@ -12,10 +12,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid1
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.syntax import Syntax
+
+from .utils import ConsoleInterface
 
 # TODO: Replace dataclasses with namedtuples, they are more efficient
 
@@ -55,7 +56,7 @@ class FeverModule:
 
 
 class ASTAnalyzer(ast.NodeVisitor):
-    def __init__(self, console: Console):
+    def __init__(self, console: ConsoleInterface):
         self._console = console
         self._context_stack = deque()
         self._context = {}

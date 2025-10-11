@@ -19,7 +19,10 @@ from types import ModuleType
 from typing import List, Optional, Sequence, Tuple
 
 import networkx as nx
-from rich.console import Console
+
+from .utils import ConsoleInterface
+
+
 def is_user_module(
     module_name: str, ignore_dirs: List[str], module_path: Optional[str] = None
 ) -> Tuple[bool, Optional[str]]:
@@ -61,7 +64,7 @@ class ModuleLoadHook(metaclass=abc.ABCMeta):
 class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
-    def __init__(self, console: Console):
+    def __init__(self, console: ConsoleInterface):
         self._console = console
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
@@ -77,7 +80,6 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._show_skips = show_skips
         builtins.__import__ = self._import
         sys.meta_path.insert(0, self)
-        # sys.addaudithook(self._audit_hook)
 
     def cleanup(self):
         """
@@ -106,29 +108,10 @@ class DependencyTracker(MetaPathFinder, Loader):
             )
             code_str = f.read()  # Read the source code
         exec(code_str, module.__dict__)  # Execute the code in the module's namespace
+        # NOTE: Our main post-load hook is to run the AST analysis and decorate all
+        # callables in the module; see call_tracker.py for that.
         for hook in self._module_load_hooks:
             hook.on_module_load(module.__name__, code_str)
-
-    # def _audit_hook(self, event_name: str, args):
-    #     if event_name == "import":
-    #         print("'import' audit detected:", args[0])
-    #     elif event_name == "exec":
-    #         code_obj: CodeType = args[0]
-    #         found = False
-    #         try:
-    #             source = inspect.getsource(code_obj)
-    #             found = "module_a" in source
-    #         except:
-    #             pass
-    #         print(
-    #             "'exec' audit detected:",
-    #             code_obj.co_name,
-    #             code_obj.co_filename,
-    #             code_obj.co_qualname,
-    #             code_obj.co_nlocals,
-    #             "FOUND module a import " if found else "not found module a improt",
-    #             # inspect.getsource(code_obj),
-    #         )
 
     def find_spec(
         self, fullname: str, import_path: Optional[Sequence[str]] = None, target=None
@@ -152,24 +135,6 @@ class DependencyTracker(MetaPathFinder, Loader):
         # also very useful for re-imports that don't call the finder/loader. That way we
         # can keep track of dependencies everywhere, which we couldn't do with just the
         # loader/finder.
-        # caller_module = (None, None)
-        # for frame in inspect.stack():
-        #     if frame.code_context is None:
-        #         continue
-        #     for context in frame.code_context:
-        #         if fullname in context and "import" in context:
-        #             caller_module = (
-        #                 inspect.getmodulename(frame.filename),
-        #                 frame.filename,
-        #             )
-        # self._console.print(
-        #     f"Importing '{fullname}' from module '{caller_module[0]}' defined in '{caller_module[1]}",
-        #     style="green on black",
-        # )
-        # if caller_module[0] is not None:
-        #     self._dep_graph.add_edge(caller_module[0], fullname)
-        # self._dependencies[caller_module[0]].append((fullname, None))
-        # return importlib.util.spec_from_loader(fullname, self, origin=path)
         return importlib.util.spec_from_file_location(fullname, path, loader=self)
 
     def _import(
@@ -252,7 +217,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             deps.append((dep_name, path, module))
         return deps
 
-    def plot_dependency_graph(self):
+    def plot(self):
         from matplotlib import pyplot as plt
 
         plt.tight_layout()

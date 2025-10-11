@@ -12,14 +12,14 @@ from functools import wraps
 from typing import Callable, Dict, Optional
 
 import networkx as nx
-from rich.console import Console
 
 from .ast_analysis import ASTAnalyzer, FeverModule
 from .dependency_tracker import DependencyTracker, ModuleLoadHook
+from .utils import ConsoleInterface
 
 
 class CallTracker(ModuleLoadHook):
-    def __init__(self, console: Console):
+    def __init__(self, console: ConsoleInterface):
         self._console = console
         self._call_graph = nx.DiGraph()
         self._ast_analyzer = ASTAnalyzer(console)
@@ -152,7 +152,7 @@ class CallTracker(ModuleLoadHook):
             # later.
             pass
 
-    def plot_call_graph(self):
+    def plot(self):
         from matplotlib import pyplot as plt
 
         plt.tight_layout()
