@@ -20,6 +20,32 @@ from typing import List, Optional, Sequence, Tuple
 
 import networkx as nx
 from rich.console import Console
+def is_user_module(
+    module_name: str, ignore_dirs: List[str], module_path: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    # FIXME: This current solution is kinda fragile. I need something robust.
+    if module_name == "":
+        return False, None
+    module_dir = os.path.dirname(module_path) if module_path is not None else None
+    for root, dirs, files in os.walk(os.path.curdir):
+        try:
+            for ignore_dir in ignore_dirs:
+                dirs[:] = [d for d in dirs if d == ignore_dir]
+        except Exception:
+            pass
+        if module_dir is not None and os.path.basename(module_dir) == root:
+            return True, module_path
+        for f in files:
+            if f.split(".")[0] == module_name:
+                return True, os.path.join(root, f)
+            elif module_path is not None and os.path.basename(module_path) == f:
+                return True, module_path
+        for d in dirs:
+            if module_name == d:
+                return True, os.path.join(root, d, "__init__.py")
+            elif module_dir == d:
+                return True, module_path
+    return False, None
 
 
 class NewImportHook(metaclass=abc.ABCMeta):
@@ -33,7 +59,7 @@ class ModuleLoadHook(metaclass=abc.ABCMeta):
 
 
 class DependencyTracker(MetaPathFinder, Loader):
-    ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "mitaine"]
+    ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
     def __init__(self, console: Console):
         self._console = console
@@ -113,27 +139,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         package. When passed in, target is a module object that the finder may use to
         make a more educated guess about what spec to return.
         """
-        found_local = False
-        path = None
-        for root, dirs, files in os.walk(os.path.curdir):
-            if found_local:
-                break
-            try:
-                for ignore_dir in self.ignore_dirs:
-                    dirs.remove(ignore_dir)
-            except Exception:
-                pass
-
-            for f in files:
-                if f.split(".")[0] == fullname:
-                    found_local = True
-                    path = os.path.join(root, f)
-                    break
-            for d in dirs:
-                if fullname == d:
-                    path = os.path.join(root, d, "__init__.py")
-                    found_local = True
-                    break
+        found_local, path = is_user_module(fullname, self.ignore_dirs)
         if not found_local:
             if self._show_skips:
                 self._console.print(
@@ -172,37 +178,27 @@ class DependencyTracker(MetaPathFinder, Loader):
         module = self._original_importer(
             name, globals=globals, locals=locals, fromlist=fromlist, level=level
         )
-        if name == "":
-            return module
-        found_local = False
-        for _, dirs, files in os.walk(os.path.curdir):
-            if found_local:
-                break
-            try:
-                for ignore_dir in self.ignore_dirs:
-                    dirs.remove(ignore_dir)
-            except Exception:
-                pass
-
-            for f in files:
-                if f.split(".")[0] == name:
-                    found_local = True
-                    break
-            for d in dirs:
-                if name == d:
-                    found_local = True
-                    break
+        found_local, _ = is_user_module(name, self.ignore_dirs)
         if not found_local:
-            if self._show_skips:
-                self._console.print(
-                    f"Skipping non-user module '{name}'", style="red on black"
-                )
             return module
+
         caller_module = (
             (globals["__name__"], globals["__file__"])
             if globals is not None
             else (None, None)
         )
+        found_local, _ = is_user_module(
+            caller_module[0], self.ignore_dirs, caller_module[1]
+        )
+        if not found_local:
+            if self._show_skips:
+                self._console.print(
+                    f"Skipping module '{name}' imported from non-user module"
+                    + f"'{caller_module[0]}' defined in '{caller_module[1]}'",
+                    style="red on black",
+                )
+            return module
+
         self._console.print(
             f"Importing '{name}' from module '{caller_module[0]}' defined in '{caller_module[1]}",
             style="yellow on black",
