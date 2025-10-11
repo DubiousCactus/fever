@@ -3,9 +3,8 @@ import os
 from fever import Fever
 
 if __name__ == "__main__":
-    debug = bool(int(os.getenv("DEBUG", False)))
     viz = bool(int(os.getenv("VIZ", False)))
-    fever = Fever(debug=debug)
+    fever = Fever()
     fever.setup()
 
     print("Loading module_a")
