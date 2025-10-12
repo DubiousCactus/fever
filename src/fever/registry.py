@@ -14,7 +14,6 @@ from fever.ast_analysis import (
     ASTAnalyzer,
     FeverClass,
     FeverFunction,
-    FeverLambda,
     FeverModule,
 )
 from fever.dependency_tracker import ModuleLoadHook
@@ -57,9 +56,7 @@ class Registry(ModuleLoadHook):
     def find_class_by_name(self, name: str) -> FeverClass | None:
         return None
 
-    def add(
-        self, module_name: str, callable: FeverFunction | FeverClass | FeverLambda
-    ) -> None:
+    def add_function(self, module_name: str, callable: FeverFunction) -> None:
         raise NotImplementedError
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
@@ -70,29 +67,21 @@ class Registry(ModuleLoadHook):
         for hook in self._hooks:
             hook.on_registry_add(self._callables[module_name])
 
+    def add_method(
+        self, module_name: str, class_: FeverClass, callable: FeverFunction
+    ) -> None:
+        raise NotImplementedError
+
     def on_module_load(self, module_name: str, code_str: str) -> None:
         if module_name == "fever":
             # TODO: Find a better way? But in fact, our import hook already excludes
-            # non-user code, so this problem arises only when testing mitaine from
-            # mitaine's project!
+            # non-user code, so this problem arises only when testing fever from
+            # fever's project!
             return
         self._console.print(
             f"Analyzing AST for module '{module_name}'", style="blue on black"
         )
-        # NOTE: This all feels a bit redundant, but let's see. What we do is:
-        # 1. Load the module from disk via exec(). This compiles it to byte code.
-        # 2. Retrieve the compiled module from sys.modules
-        # 3. Analyze its AST to find all callables and their memory addresses.
-        # 4. Wrap each callable in a decorator. This gives us a new function pointer.
-        # 5. Replace the module's function pointer with our wrapped function pointer.
-        # ~6. Reload the modified module and replace it in sys.modules.
-        # So it seems that only step 6 is a bit redundant after all. Can we directly
-        # hook the pointer in the module without reloading it?~
-        # EDIT: I've successfully removed step 6. All in all, it's not redundant as we
-        # directly modify memory addresses :) Neat!
         module = sys.modules[module_name]
-        # TODO: Move this line to the registry! Then the registry should call a hook
-        # into the call tracker which will wrap the function.
         self._callables[module_name] = self._ast_analyzer.analyze(
             module_name, module, show_ast=False
         )

@@ -54,6 +54,18 @@ class Fever:
         statements coming before calling this function will not be tracked, and as a
         result, any function calls to functions/classes defined in those modules will not be
         tracked.
+
+
+        Fever tracks imports and wraps all callables to insert a registry hook, where
+        the actual code will be stored and updated. It does so in the following steps:
+        1. Insert an import hook which detects user modules and ignores others.
+        2. On first import, load the module from disk via exec(); this compiles it to byte code.
+        3. Retrieve the compiled module from sys.modules.
+        4. Analyze its AST to find all callables.
+        4. Wrap each callable in a decorator and save the underlying pointer to a registry.
+        5. Replace the module's function pointer with our wrapped function pointer. Any
+        subsequent call to the callable will be redirected to the proxy callable which
+        will pull the bytecode from the registry.
         """
         self.dependency_tracker.setup(show_skips=self._verbosity == 3)
         self.dependency_tracker.register_module_load_hook(self.registry)
@@ -76,15 +88,15 @@ class Fever:
         Reload all callables that have changed on disk by comparing their hash to the
         ones stored in the registry. All callables are automatically tracked based on
         imports and function calls that happen after calling `setup()`.
+
+        For each tracked module:
+          1. Reload from disk.
+          2. Run AST analysis to extract callables (functions and methods).
+          3. Compare hashes of callables with those in the registry.
+          4. For each hash mismatch:
+              a. Replace the function bytecode in the registry.
+          5. For each new callable not found in registry, add it.
         """
-        # INFO: Here's the plan:
-        # For each tracked module:
-        #   1. Reload from disk
-        #   2. Run AST analysis
-        #   3. Compare hashes of callables with those in the registry
-        #   4. For each hash mismatch:
-        #       a. Replace the function bytecode in the registry
-        #   5. For each new callable not found in registry, add it.
         console = self._console_if if self._verbosity >= 1 else ConsoleInterface(None)
         for module_name in self.dependency_tracker.all_imports:
             console.print(f"Inspecting module '{module_name}'", style="purple on black")
@@ -128,11 +140,9 @@ class Fever:
                         #     + "This should not happen, please make a bug report."
                         # )
                         registry_namespace = self.registry._FUNCTION_DEFS[module_name]
-                        exec(
-                            cmp_func.code, registry_namespace
-                        )  # The new function bytecode is in _FUNCTION_DEFS now
+                        exec(cmp_func.code, registry_namespace)
                 else:
-                    self.registry.add(module_name, cmp_func)
+                    self.registry.add_function(module_name, cmp_func)
 
             for cmp_class, cmp_methods in cmp_fever_module.methods.items():
                 for cmp_method in cmp_methods:
@@ -144,10 +154,10 @@ class Fever:
                                 f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
                                 style="green on black",
                             )
-                            module_namespace = vars(module_obj)
                             # FIXME: This assert is broken. We need the hierarchy of the
                             # method definition. It will only work for level 1 (class in
                             # module).
+                            # module_namespace = vars(module_obj)
                             # assert hasattr(
                             #     getattr(
                             #         module_namespace[cmp_class.name],
@@ -162,11 +172,9 @@ class Fever:
                             registry_namespace = self.registry._CLASS_METHOD_DEFS[
                                 module_name
                             ][cmp_class.name]
-                            exec(
-                                cmp_method.code, registry_namespace
-                            )  # The new function bytecode is in _FUNCTION_DEFS now
+                            exec(cmp_method.code, registry_namespace)
                     else:
-                        self.registry.add(module_name, cmp_method)
+                        self.registry.add_method(module_name, cmp_class, cmp_method)
 
     def rerun(self, entry_point: UUID):
         """
