@@ -28,6 +28,7 @@ class FeverClass:
     uid: UUID
     ast_node: ast.ClassDef
     obj: object
+    hash: int
 
 
 @dataclass
@@ -37,6 +38,8 @@ class FeverFunction:
     ast_node: ast.FunctionDef
     args: List[Any]
     obj: object
+    hash: int
+    code: Optional[str] = None
 
 
 @dataclass
@@ -61,10 +64,12 @@ class ASTAnalyzer(ast.NodeVisitor):
     def __init__(self, console: ConsoleInterface):
         self._console = console
         self._context_stack = deque()
+        self._source = None
         self._context = {}
 
     def _reset_context(self):
         self._context_stack = deque()
+        self._source = None
         self._context = {
             "classes": [],
             "functions": [],
@@ -72,24 +77,30 @@ class ASTAnalyzer(ast.NodeVisitor):
             "methods": defaultdict(list),
         }
 
-    def analyze(self, name: str, obj: object, show_ast=False) -> FeverModule:
+    def analyze(
+        self, name: str, obj: object, source_path: Optional[str] = None, show_ast=False
+    ) -> FeverModule:
         """
         Analyze the AST of a given object (typically a module, but possibly a class or
         other) and return a feverModule which tracks module-level functions, classes,
         lambdas and methods.
         """
         self._reset_context()
-        source = inspect.getsource(obj)
+        if source_path:
+            with open(source_path, "r") as f:
+                self._source = f.read()
+        else:
+            self._source = inspect.getsource(obj)
         self._context_stack.append(obj)
         self._console.print(
             Panel(
-                Syntax(source, lexer="python", theme="dracula"),
+                Syntax(self._source, lexer="python", theme="dracula"),
                 title="Code to parse",
                 expand=False,
             ),
             overflow="ellipsis",
         )
-        ast_root = ast.parse(source)
+        ast_root = ast.parse(self._source)
         if not isinstance(ast_root, ast.Module):
             raise TypeError(
                 f"'{name}' is not a module. AST analysis is only for modules."
@@ -116,8 +127,17 @@ class ASTAnalyzer(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         class_obj = getattr(self._context_stack[-1], node.name)
+        code_hash = hash(ast.get_source_segment(self._source, node))
         self._context_stack.append(class_obj)
-        self._context["classes"].append(FeverClass(node.name, uuid1(), node, class_obj))
+        self._context["classes"].append(
+            FeverClass(
+                node.name,
+                uuid1(),
+                node,
+                class_obj,
+                code_hash,
+            )
+        )
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
         for el in node.body:
@@ -136,7 +156,11 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
         func_obj = None
         func_obj = getattr(self._context_stack[-1], node.name)
-        fever_obj = FeverFunction(node.name, uuid1(), node, [], func_obj)
+        code = ast.get_source_segment(self._source, node)
+        code_hash = hash(code)
+        fever_obj = FeverFunction(
+            node.name, uuid1(), node, [], func_obj, code_hash, code=code
+        )
         if module_level:
             self._context["functions"].append(fever_obj)
         else:

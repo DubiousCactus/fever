@@ -108,6 +108,9 @@ class CallTracker(RegistryAddHook):
     def on_registry_add(self, module: FeverModule) -> None:
         for func in module.functions:
             assert isinstance(func.obj, object)
+            assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
+                f"Function {func.name} was already wrapped! This is not supposed to happen."
+            )
             setattr(module.obj, func.name, self.track_calls(func.obj))
         for class_, methods in module.methods.items():
             assert isinstance(class_, object)

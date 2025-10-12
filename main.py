@@ -30,8 +30,9 @@ if __name__ == "__main__":
         fever.plot_dependency_graph()
         fever.plot_call_graph()
 
-    # _ = input("Press a key to reload and rerun")
-    # fever.reload()  # Only reloads callables that changed on disk
+    _ = input("Press a key to reload and rerun")
+    fever.reload()  # Only reloads callables that changed on disk
+    module_a.function()
     # fever.rerun(
     #     entry_point="idk-yet-but-probably-find-UUID-from-func-name"
     # )  # Only re-executes reloaded code, but goes through the call graph from entry point

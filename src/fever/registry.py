@@ -31,9 +31,18 @@ class Registry(ModuleLoadHook):
     def register_add_hook(self, hook: RegistryAddHook) -> None:
         self._hooks.append(hook)
 
-    def find_by_name(
-        self, name: str
-    ) -> FeverFunction | FeverLambda | FeverClass | None:
+    def find_function_by_name(
+        self, name: str, module_name: str
+    ) -> FeverFunction | None:
+        for func in self._callables[module_name].functions:
+            if func.name == name:
+                return func
+        return None
+
+    def find_method_by_name(self, name: str) -> FeverFunction | None:
+        return None
+
+    def find_class_by_name(self, name: str) -> FeverClass | None:
         return None
 
     def add(
