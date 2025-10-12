@@ -12,15 +12,17 @@ from typing import Callable, Optional
 
 import networkx as nx
 
-from .ast_analysis import FeverModule
-from .hooks import RegistryAddHook
-from .utils import ConsoleInterface
+from fever.ast_analysis import FeverModule
+from fever.hooks import RegistryAddHook
+from fever.registry import Registry
+from fever.utils import ConsoleInterface
 
 
 class CallTracker(RegistryAddHook):
-    def __init__(self, console: ConsoleInterface):
+    def __init__(self, registry: Registry, console: ConsoleInterface):
         self._console = console
         self._call_graph = nx.DiGraph()
+        self._registry = registry
 
     def track_calls(
         self, func: Callable, class_obj: Optional[object] = None
@@ -79,8 +81,11 @@ class CallTracker(RegistryAddHook):
                         caller_obj = getattr(caller_obj, "__wrapped__")
                 except:
                     caller_obj = None
+
+            func_name = func.__name__
+            module_name = inspect.getmodule(func).__name__
             self._console.print(
-                f"Callable '{func.__name__}' defined in '{inspect.getmodule(func).__name__}' "
+                f"Callable '{func_name}' defined in '{module_name}' "
                 + f"was called by '{caller_name}' at line {caller_frame.f_lineno}",
                 style="green on black",
             )
@@ -101,7 +106,33 @@ class CallTracker(RegistryAddHook):
                     self._call_graph[key][func]["weight"] = 1
                 else:
                     self._call_graph[key][func]["weight"] += 1
-            return func(*args, **kwargs)
+            # Now, put/pull the function in the registry and always return a call
+            # to the registry function! Simple as that. When we reload, we'll update in
+            # the registry directly :)
+            if callee_instance is None:
+                # function call
+                if func_name not in self._registry._FUNCTION_DEFS[module_name]:
+                    self._registry._FUNCTION_DEFS[module_name][func_name] = func
+                return self._registry._FUNCTION_DEFS[module_name][func_name](
+                    *args, **kwargs
+                )
+            else:
+                # Method call
+                class_name = class_obj.__qualname__
+                if class_name not in self._registry._CLASS_METHOD_DEFS[module_name]:
+                    self._registry._CLASS_METHOD_DEFS[module_name][class_name] = {
+                        func_name: func
+                    }
+                elif (
+                    func_name
+                    not in self._registry._CLASS_METHOD_DEFS[module_name][class_name]
+                ):
+                    self._registry._CLASS_METHOD_DEFS[module_name][class_name][
+                        func_name
+                    ] = func
+                return self._registry._CLASS_METHOD_DEFS[module_name][
+                    class_obj.__qualname__
+                ][func_name](*args, **kwargs)
 
         return wrapper
 

@@ -8,6 +8,7 @@ from uuid import UUID
 
 from rich.console import Console
 
+import fever.registry as registry
 from fever.ast_analysis import ASTAnalyzer, FeverModule
 from fever.registry import Registry
 
@@ -38,12 +39,13 @@ class Fever:
         self.dependency_tracker = DependencyTracker(
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None)
         )
-        self.call_tracker = CallTracker(
-            self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
-        )
         self.registry = Registry(
             self._ast_analyzer,
             self._console_if if self._verbosity >= 1 else ConsoleInterface(None),
+        )
+        self.call_tracker = CallTracker(
+            self.registry,
+            self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
         )
 
     def setup(self):
@@ -81,13 +83,8 @@ class Fever:
         #   2. Run AST analysis
         #   3. Compare hashes of callables with those in the registry
         #   4. For each hash mismatch:
-        #       a. Replace the underlying function
+        #       a. Replace the function bytecode in the registry
         #   5. For each new callable not found in registry, add it.
-
-        # TODO: Now for part 2: reference propagation
-        # 1. Topological sort of the call graph
-        # 2. Every function that calls an updated function needs to be updated.
-        # 3. Propagate backward? Maybe not.
         console = self._console_if if self._verbosity >= 1 else ConsoleInterface(None)
         for module_name in self.dependency_tracker.all_imports:
             console.print(f"Inspecting module '{module_name}'", style="purple on black")
@@ -112,30 +109,26 @@ class Fever:
                         # WARN: cmp_func.obj is not valid! Because we get it from
                         # the original module, and it was not reloaded. So either we
                         # reload the module, but I don't like it because it replaces
-                        # sys.modules and so reloads the entire thing, or we exec
+                        # sys.modules and reloads the entire thing, or we exec
                         # function code only!
-                        # INFO: When executing code with the namespace of a module, it
-                        # will replace the definition and references to that function in
-                        # the module. That means we can update the function bytecode for
-                        # the module namespace, but it won't propagate to other modules
-                        # that have references to that function! We need to do this is
-                        # step 2.
-
-                        # Execute the function code in the module namespace (the
-                        # globals() dict which contains the name of the function):
-                        namespace = vars(module_obj)
-                        exec(cmp_func.code, namespace)
-                        # Delete the original function reference:
-                        if hasattr(namespace[fever_callable.name], "__wrapped__"):
-                            delattr(namespace[fever_callable.name], "__wrapped__")
-                        # Wrap the recompiled function
-                        setattr(
-                            module_obj,
-                            fever_callable.name,
-                            self.call_tracker.track_calls(
-                                namespace[fever_callable.name]
-                            ),
+                        # INFO: Compile the new function code into the registry
+                        # namespace, where it should already be defined since the
+                        # original function is placed there by our call wrapper. For
+                        # subsequent calls to the function, from anywhere, the new code
+                        # will be used automatically. It's beautiful, there is no need
+                        # to refresh imports or references.
+                        module_namespace = vars(module_obj)
+                        assert hasattr(
+                            module_namespace[fever_callable.name], "__wrapped__"
+                        ), (
+                            f"Function '{fever_callable.name}' was never wrapped "
+                            + "and so is not in the registry. "
+                            + "This should not happen, please make a bug report."
                         )
+                        registry_namespace = self.registry._FUNCTION_DEFS[module_name]
+                        exec(
+                            cmp_func.code, registry_namespace
+                        )  # The new function bytecode is in _FUNCTION_DEFS now
                 else:
                     self.registry.add(module_name, cmp_func)
 

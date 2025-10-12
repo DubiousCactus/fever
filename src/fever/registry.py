@@ -7,6 +7,7 @@
 
 
 import sys
+from collections import defaultdict
 from typing import Dict, List
 
 from fever.ast_analysis import (
@@ -22,6 +23,9 @@ from fever.utils import ConsoleInterface
 
 
 class Registry(ModuleLoadHook):
+    _FUNCTION_DEFS = defaultdict(dict)
+    _CLASS_METHOD_DEFS = defaultdict(dict)
+
     def __init__(self, ast_analyzer: ASTAnalyzer, console_if: ConsoleInterface):
         self._console = console_if
         self._ast_analyzer = ast_analyzer
