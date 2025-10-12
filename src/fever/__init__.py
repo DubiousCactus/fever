@@ -2,6 +2,7 @@ import importlib
 import os
 import sys
 from copy import copy, deepcopy
+from types import ModuleType
 from typing import Optional
 from uuid import UUID
 
@@ -90,39 +91,9 @@ class Fever:
         console = self._console_if if self._verbosity >= 1 else ConsoleInterface(None)
         for module_name in self.dependency_tracker.all_imports:
             console.print(f"Inspecting module '{module_name}'", style="purple on black")
-            # rld_module = None
-            # try:
-            # FIXME: Reloading __main__ does not work (spec not found). Can we make
-            # it work?
-            # FIXME: Using importlib.reload seems to replace sys.modules directly! I
-            # don't want that to happen automatically, so I will have to
-            # re-implement importlib.reload(). It also calls the original Loader
-            # again! So that has many ill effects. I can hack it together for now,
-            # but it would be best to re-implement it. Or actually would it? Because
-            # I'd have to implement it exactly as in the loader.... hmmmm....
-            # original_module = sys.modules[module_name]
-            # breakpoint()
-            # self.dependency_tracker.disable_hooks()
-            # FIXME: the reloading seems to re-execute the new code, that's great.
-            # But then when I pass this new module to the AST analyzer, I don't get
-            # the new code from it. But the reloading works, because I can see the
-            # changes taking effect. That's just crazy.
-            # I found this old bug report that's relevant: https://github.com/python/cpython/issues/42071
-
-            # rld_module = importlib.reload(original_module)
-            # self.dependency_tracker.enable_hooks()
-            # sys.modules[module_name] = original_module
-            # NOTE: I have the __file__ attr on the module. Can I just parse the
-            # code there and get an object? What is exec() really doing when I'm
-            # loading a module?
-            # except Exception as e:
-            #     console.print(
-            #         f"Could not reload module! Exception: {e}", style="red on black"
-            #     )
-            # if rld_module is not None:
-            original_module = sys.modules[module_name]
+            module_obj: ModuleType = sys.modules[module_name]
             cmp_fever_module: FeverModule = self._ast_analyzer.analyze(
-                module_name, original_module, getattr(original_module, "__file__")
+                module_name, module_obj, getattr(module_obj, "__file__")
             )
             for cmp_func in cmp_fever_module.functions:
                 # NOTE: Now cames the tricky part... How do we match our previously parsed
@@ -141,19 +112,29 @@ class Fever:
                         # WARN: cmp_func.obj is not valid! Because we get it from
                         # the original module, and it was not reloaded. So either we
                         # reload the module, but I don't like it because it replaces
-                        # sys.modules and so reloads the entire thing, or  we exec
+                        # sys.modules and so reloads the entire thing, or we exec
                         # function code only!
+                        # INFO: When executing code with the namespace of a module, it
+                        # will replace the definition and references to that function in
+                        # the module. That means we can update the function bytecode for
+                        # the module namespace, but it won't propagate to other modules
+                        # that have references to that function! We need to do this is
+                        # step 2.
 
-                        # INFO: exec() works for function code! Hooray!!
-                        exec(
-                            cmp_func.code,
-                            getattr(fever_callable.obj, "__globals__", None),
-                            getattr(fever_callable.obj, "__locals__", None),
-                        )
+                        # Execute the function code in the module namespace (the
+                        # globals() dict which contains the name of the function):
+                        namespace = vars(module_obj)
+                        exec(cmp_func.code, namespace)
+                        # Delete the original function reference:
+                        if hasattr(namespace[fever_callable.name], "__wrapped__"):
+                            delattr(namespace[fever_callable.name], "__wrapped__")
+                        # Wrap the recompiled function
                         setattr(
-                            original_module,
+                            module_obj,
                             fever_callable.name,
-                            self.call_tracker.track_calls(fever_callable.obj),
+                            self.call_tracker.track_calls(
+                                namespace[fever_callable.name]
+                            ),
                         )
                 else:
                     self.registry.add(module_name, cmp_func)

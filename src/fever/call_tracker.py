@@ -112,6 +112,8 @@ class CallTracker(RegistryAddHook):
                 f"Function {func.name} was already wrapped! This is not supposed to happen."
             )
             setattr(module.obj, func.name, self.track_calls(func.obj))
+            # FIXME: This invalidates the original func.obj right? I mean we won't be
+            # using it, so should we update it?
         for class_, methods in module.methods.items():
             assert isinstance(class_, object)
             for method in methods:
