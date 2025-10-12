@@ -12,7 +12,7 @@ from typing import Callable, Optional
 
 import networkx as nx
 
-from fever.ast_analysis import FeverModule
+from fever.ast_analysis import FeverClass, FeverModule
 from fever.hooks import RegistryAddHook
 from fever.registry import Registry
 from fever.utils import ConsoleInterface
@@ -25,7 +25,7 @@ class CallTracker(RegistryAddHook):
         self._registry = registry
 
     def track_calls(
-        self, func: Callable, class_obj: Optional[object] = None
+        self, func: Callable, fever_class: Optional[FeverClass] = None
     ) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -40,7 +40,7 @@ class CallTracker(RegistryAddHook):
             # TODO: Handle edge cases (recursion, partials, wrappers, etc.)
             caller_frame = sys._getframe(1)
             caller_obj, caller_instance, callee_instance = None, None, None
-            if class_obj is not None and isinstance(args[0], class_obj):
+            if fever_class is not None and isinstance(args[0], fever_class.obj):
                 callee_instance = args[0]
             if obj := caller_frame.f_locals.get(
                 "self", None
@@ -109,6 +109,9 @@ class CallTracker(RegistryAddHook):
             # Now, put/pull the function in the registry and always return a call
             # to the registry function! Simple as that. When we reload, we'll update in
             # the registry directly :)
+            # FIXME: Unless a callable is called at least once, hot code reloading won't
+            # work because the callable won't be in the registry! This should throw an
+            # exception.
             if callee_instance is None:
                 # function call
                 if func_name not in self._registry._FUNCTION_DEFS[module_name]:
@@ -118,7 +121,8 @@ class CallTracker(RegistryAddHook):
                 )
             else:
                 # Method call
-                class_name = class_obj.__qualname__
+                assert fever_class is not None
+                class_name = fever_class.name
                 if class_name not in self._registry._CLASS_METHOD_DEFS[module_name]:
                     self._registry._CLASS_METHOD_DEFS[module_name][class_name] = {
                         func_name: func
@@ -130,9 +134,9 @@ class CallTracker(RegistryAddHook):
                     self._registry._CLASS_METHOD_DEFS[module_name][class_name][
                         func_name
                     ] = func
-                return self._registry._CLASS_METHOD_DEFS[module_name][
-                    class_obj.__qualname__
-                ][func_name](*args, **kwargs)
+                return self._registry._CLASS_METHOD_DEFS[module_name][class_name][
+                    func_name
+                ](*args, **kwargs)
 
         return wrapper
 
@@ -149,9 +153,9 @@ class CallTracker(RegistryAddHook):
             assert isinstance(class_, object)
             for method in methods:
                 setattr(
-                    class_,
+                    class_.obj,
                     method.name,
-                    self.track_calls(method.obj, class_obj=class_),
+                    self.track_calls(method.obj, fever_class=class_),
                 )
         for lambda_ in module.lambdas:
             # NOTE: We can't really track lambdas as they are anonymous and we have no

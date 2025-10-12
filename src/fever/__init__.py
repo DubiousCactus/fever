@@ -118,19 +118,55 @@ class Fever:
                         # will be used automatically. It's beautiful, there is no need
                         # to refresh imports or references.
                         module_namespace = vars(module_obj)
-                        assert hasattr(
-                            module_namespace[fever_callable.name], "__wrapped__"
-                        ), (
-                            f"Function '{fever_callable.name}' was never wrapped "
-                            + "and so is not in the registry. "
-                            + "This should not happen, please make a bug report."
-                        )
+                        # FIXME: This assert is broken. We need the hierarchy of the
+                        # function definition. It will only work for level 0 (module).
+                        # assert hasattr(
+                        #     module_namespace[fever_callable.name], "__wrapped__"
+                        # ), (
+                        #     f"Function '{fever_callable.name}' was never wrapped "
+                        #     + "and so is not in the registry. "
+                        #     + "This should not happen, please make a bug report."
+                        # )
                         registry_namespace = self.registry._FUNCTION_DEFS[module_name]
                         exec(
                             cmp_func.code, registry_namespace
                         )  # The new function bytecode is in _FUNCTION_DEFS now
                 else:
                     self.registry.add(module_name, cmp_func)
+
+            for cmp_class, cmp_methods in cmp_fever_module.methods.items():
+                for cmp_method in cmp_methods:
+                    if fever_callable := self.registry.find_method_by_name(
+                        cmp_method.name, cmp_class.name, module_name
+                    ):
+                        if fever_callable.hash != cmp_method.hash:
+                            console.print(
+                                f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
+                                style="green on black",
+                            )
+                            module_namespace = vars(module_obj)
+                            # FIXME: This assert is broken. We need the hierarchy of the
+                            # method definition. It will only work for level 1 (class in
+                            # module).
+                            # assert hasattr(
+                            #     getattr(
+                            #         module_namespace[cmp_class.name],
+                            #         fever_callable.name,
+                            #     ),
+                            #     "__wrapped__",
+                            # ), (
+                            #     f"Function '{fever_callable.name}' was never wrapped "
+                            #     + "and so is not in the registry. "
+                            #     + "This should not happen, please make a bug report."
+                            # )
+                            registry_namespace = self.registry._CLASS_METHOD_DEFS[
+                                module_name
+                            ][cmp_class.name]
+                            exec(
+                                cmp_method.code, registry_namespace
+                            )  # The new function bytecode is in _FUNCTION_DEFS now
+                    else:
+                        self.registry.add(module_name, cmp_method)
 
     def rerun(self, entry_point: UUID):
         """

@@ -43,7 +43,15 @@ class Registry(ModuleLoadHook):
                 return func
         return None
 
-    def find_method_by_name(self, name: str) -> FeverFunction | None:
+    def find_method_by_name(
+        self, name: str, class_name: str, module_name: str
+    ) -> FeverFunction | None:
+        for cls_, methods in self._callables[module_name].methods.items():
+            if cls_.name != class_name:
+                continue
+            for method in methods:
+                if method.name == name:
+                    return method
         return None
 
     def find_class_by_name(self, name: str) -> FeverClass | None:
@@ -52,6 +60,7 @@ class Registry(ModuleLoadHook):
     def add(
         self, module_name: str, callable: FeverFunction | FeverClass | FeverLambda
     ) -> None:
+        raise NotImplementedError
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
         if isinstance(callable, FeverFunction):

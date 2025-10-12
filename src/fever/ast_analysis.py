@@ -30,6 +30,9 @@ class FeverClass:
     obj: object
     hash: int
 
+    def __hash__(self) -> int:
+        return self.hash
+
 
 @dataclass
 class FeverFunction:
@@ -40,6 +43,9 @@ class FeverFunction:
     obj: object
     hash: int
     code: Optional[str] = None
+
+    def __hash__(self) -> int:
+        return self.hash
 
 
 @dataclass
@@ -164,7 +170,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         if module_level:
             self._context["functions"].append(fever_obj)
         else:
-            self._context["methods"][self._context_stack[-1]].append(fever_obj)
+            self._context["methods"][self._context["classes"][-1]].append(fever_obj)
         self.generic_visit(node)
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
