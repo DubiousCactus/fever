@@ -129,9 +129,9 @@ class Fever:
                         # subsequent calls to the function, from anywhere, the new code
                         # will be used automatically. It's beautiful, there is no need
                         # to refresh imports or references.
-                        module_namespace = vars(module_obj)
                         # FIXME: This assert is broken. We need the hierarchy of the
                         # function definition. It will only work for level 0 (module).
+                        # module_namespace = vars(module_obj)
                         # assert hasattr(
                         #     module_namespace[fever_callable.name], "__wrapped__"
                         # ), (
