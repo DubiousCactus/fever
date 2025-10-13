@@ -24,24 +24,29 @@ class ConsoleInterface:
 def is_user_module(
     module_name: str, ignore_dirs: List[str], module_path: Optional[str] = None
 ) -> Tuple[bool, Optional[str]]:
-    # FIXME: This current solution is kinda fragile. I need something robust.
+    # FIXME: This current solution is kinda fragile. I need something robust. I also
+    # desperately need unit tests!
     if module_name == "":
         return False, None
     module_dir = os.path.dirname(module_path) if module_path is not None else None
     for root, dirs, files in os.walk(os.path.curdir):
         try:
             for ignore_dir in ignore_dirs:
-                dirs[:] = [d for d in dirs if d == ignore_dir]
+                dirs[:] = [d for d in dirs if d != ignore_dir]
         except Exception:
             pass
         if module_dir is not None and os.path.basename(module_dir) == root:
             return True, module_path
         for f in files:
+            if not f.endswith(".py"):
+                continue
             if f.split(".")[0] == module_name:
                 return True, os.path.join(root, f)
             elif module_path is not None and os.path.basename(module_path) == f:
                 return True, module_path
         for d in dirs:
+            if not os.path.isfile(os.path.join(root, d, "__init__.py")):
+                continue
             if module_name == d:
                 return True, os.path.join(root, d, "__init__.py")
             elif module_dir == d:
