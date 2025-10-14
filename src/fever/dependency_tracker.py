@@ -9,18 +9,48 @@
 import builtins
 import importlib
 import inspect
+import os
 import sys
 from collections import defaultdict
-from importlib.abc import Loader, MetaPathFinder
+from importlib.abc import Loader, MetaPathFinder, SourceLoader
 from importlib.machinery import ModuleSpec
 from types import ModuleType
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Tuple
 
 import networkx as nx
 
 from fever.hooks import ModuleLoadHook, NewImportHook
 
-from .utils import ConsoleInterface, is_user_module
+from .utils import ConsoleInterface
+
+# FIXME: Imports such as: from module import A don't work. They're quite tricky to
+# implement, but I think that the PathEntryFinder may be my salvation. give it a shot
+# before releasing v0.0.1! Fever should work on the matchbox project, which I consider
+# sufficiently complex to validate the tool. Then we should create a test suite.
+
+
+class TestLoader(Loader):
+    def __init__(self, name: str, path: str):
+        print(f"TestLoader: Loading module {name} from {path}")
+
+
+class MyLoader(SourceLoader):
+    def __init__(self, fullname, path):
+        print(f"SourceLoader: Loading module {fullname} from {path}")
+        self.fullname = fullname
+        self.path = path
+
+    def get_filename(self, fullname):
+        return self.path
+
+    def get_data(self, filename):
+        """exec_module is already defined for us, we just have to provide a way
+        of getting the source code of the module"""
+        with open(filename) as f:
+            data = f.read()
+        # do something with data ...
+        # eg. ignore it... return "print('hello world')"
+        return data
 
 
 class DependencyTracker(MetaPathFinder, Loader):
@@ -32,6 +62,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._show_skips = False
         self._new_import_hooks: List[NewImportHook] = []
         self._module_load_hooks: List[ModuleLoadHook] = []
+        self._user_modules: Dict[str, str] = {}
 
     def setup(self, show_skips: bool = False):
         """
@@ -40,8 +71,25 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._original_importer = builtins.__import__
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
+        # self._user_modules = self._scan_user_modules()
+        caller_code_obj = sys._getframe(2).f_code  # 2 bc 1 is Fever.__init__
+        self._user_modules[inspect.getmodule(caller_code_obj).__name__] = (
+            inspect.getfile(caller_code_obj)
+        )
+        self.curdir = os.getcwd()
+        self._console.print(
+            f"User modules: {', '.join(self._user_modules.keys())}",
+            style="blue on black",
+        )
+        # print(self._user_modules)
+        # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
         builtins.__import__ = self._import
         sys.meta_path.insert(0, self)
+        # sys.path_hooks.insert(0, FileFinder.path_hook((self.test_loader, ["*.py"])))
+        # sys.path_hooks.insert(0, FileFinder.path_hook((TestLoader, ["*.py"])))
+        # clear any loaders that might already be in use by the FileFinder
+        # sys.path_importer_cache.clear()
+        # importlib.invalidate_caches()
 
     def cleanup(self):
         """
@@ -53,51 +101,122 @@ class DependencyTracker(MetaPathFinder, Loader):
             if isinstance(finder, self.__class__):
                 sys.meta_path.remove(finder)
 
+    def test_loader(self, name: str, path: str):
+        print(f"Loading module {name} from {path}")
+
+    def _scan_user_modules(self) -> Dict[str, str]:
+        user_modules = {}
+        base_dir = os.path.curdir
+        for root, dirs, files in os.walk(base_dir):
+            for ignore_dir in self.ignore_dirs:
+                dirs[:] = [d for d in dirs if d != ignore_dir]
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                module_name = f.split(".")[0]
+                user_modules[module_name] = os.path.join(root, f)
+            for d in dirs:
+                if not os.path.isfile(os.path.join(root, d, "__init__.py")):
+                    continue
+                user_modules[d] = os.path.join(root, d, "__init__.py")
+        return user_modules
+
     def create_module(self, spec: ModuleSpec) -> ModuleType | None:
         return None  # Fallback to default machinery
 
     def exec_module(self, module) -> None:
         file_path = None
-        try:
-            file_path = module.__spec__.origin
-        except:
-            file_path = module.__file__
-        assert file_path is not None
-        with open(file_path) as f:
-            self._console.print(
-                f"Loading {module.__name__} from {module.__file__}...",
-                style="black on white",
-            )
-            code_str = f.read()  # Read the source code
-        exec(code_str, module.__dict__)  # Execute the code in the module's namespace
-        # NOTE: Our main post-load hook is to run the AST analysis and decorate all
-        # callables in the module; see call_tracker.py for that.
-        for hook in self._module_load_hooks:
-            hook.on_module_load(module.__name__, code_str)
+        if module_spec := getattr(module, "__spec__", None):
+            # print(module_spec)
+            file_path = module_spec.origin
+            self._user_modules[module_spec.name] = file_path
+            assert file_path is not None
+            with open(file_path) as f:
+                self._console.print(
+                    f"Loading {module_spec.name} from {file_path}...",
+                    style="black on white",
+                )
+                code_str = f.read()  # Read the source code
+                # FIXME: If this is an empty file, we need to execute every submodule in
+                # this namespace.
+                self._console.print("Done!", style="green on black")
+            self._console.print("\t - Executing module...", style="black on white")
+            exec(
+                code_str, module.__dict__
+            )  # Execute the code in the module's namespace
+            self._console.print("\t - Done!", style="green on black")
+            # NOTE: Our main post-load hook is to run the AST analysis and decorate all
+            # callables in the module; see call_tracker.py for that.
+            for hook in self._module_load_hooks:
+                hook.on_module_load(module.__name__, code_str)
 
-    def find_spec(
-        self, fullname: str, import_path: Optional[Sequence[str]] = None, target=None
-    ) -> ModuleSpec | None:
+    def find_spec(self, fullname: str, path: str, target=None) -> ModuleSpec | None:
         """
-        For top-level imports, import_path will be None. Otherwise, this is a search for
+        For top-level imports, path will be None. Otherwise, this is a search for
         a subpackage or module and path will be the value of __path__ from the parent
         package. When passed in, target is a module object that the finder may use to
         make a more educated guess about what spec to return.
         """
-        found_local, path = is_user_module(fullname, self.ignore_dirs)
-        if not found_local:
+        if path is None or path == "" or path == []:
+            path = [self.curdir]  # top level import --
+        if "." in fullname:
+            *parents, name = fullname.split(".")
+        else:
+            name = fullname
+        if os.path.commonpath([path[0], str(self.curdir)]) != self.curdir:
+            return None
+        for ignore_dir in self.ignore_dirs:
+            ignore_dir = os.path.join(self.curdir, ignore_dir)
+            if os.path.commonpath([path[0], ignore_dir]) == ignore_dir:
+                if self._show_skips:
+                    self._console.print(
+                        f"Skipping ignored directory '{ignore_dir}' in path '{path[0]}'",
+                        style="red on black",
+                    )
+                return None
+        for entry in path:
+            if os.path.isdir(os.path.join(entry, name)):
+                # this module has children modules
+                filename = os.path.join(entry, name, "__init__.py")
+                submodule_locations = [os.path.join(entry, name)]
+            else:
+                filename = os.path.join(entry, name + ".py")
+                submodule_locations = None
+            if not os.path.exists(filename):
+                continue
+
+            print(
+                f"Loading module {fullname} (path={path}, target={target}) stored in "
+            )
+            return importlib.util.spec_from_file_location(
+                fullname,
+                filename,
+                loader=self,
+                submodule_search_locations=submodule_locations,
+            )
+        return None
+        user_path = self._user_modules.get(fullname, None)
+        if user_path is None:
             if self._show_skips:
                 self._console.print(
                     f"Skipping non-user module '{fullname}'", style="red on black"
                 )
             return None
+        print(
+            f"Loading module {fullname} (path={path}, target={target}) stored in {user_path}"
+        )
+        if path is not None:
+            print(f"Searching for submodule {fullname} in {path}, with target {target}")
         # INFO: Finding the caller module in the finder seems difficult, probably  due
         # to the import chains that call the finder and since we use the call frame to
         # find the caller. So we use the __import__ override hook for this, which is
         # also very useful for re-imports that don't call the finder/loader. That way we
         # can keep track of dependencies everywhere, which we couldn't do with just the
         # loader/finder.
-        return importlib.util.spec_from_file_location(fullname, path, loader=self)
+        return importlib.util.spec_from_file_location(fullname, user_path, loader=self)
+
+    def invalidate_caches(self):
+        self._user_modules = {}
 
     def _import(
         self, name: str, globals=None, locals=None, fromlist=(), level=0
@@ -105,8 +224,8 @@ class DependencyTracker(MetaPathFinder, Loader):
         module = self._original_importer(
             name, globals=globals, locals=locals, fromlist=fromlist, level=level
         )
-        found_local, _ = is_user_module(name, self.ignore_dirs)
-        if not found_local:
+        path = self._user_modules.get(name, None)
+        if path is None:
             return module
 
         caller_module = (
@@ -114,10 +233,10 @@ class DependencyTracker(MetaPathFinder, Loader):
             if globals is not None
             else (None, None)
         )
-        found_local, _ = is_user_module(
-            caller_module[0], self.ignore_dirs, caller_module[1]
+        path = (
+            self._user_modules.get(caller_module[0], None) if caller_module[0] else None
         )
-        if not found_local:
+        if path is None:
             if self._show_skips:
                 self._console.print(
                     f"Skipping module '{name}' imported from non-user module"
