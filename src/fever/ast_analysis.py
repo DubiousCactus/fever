@@ -147,7 +147,9 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._console.print(Pretty(node))
         self._console.print(f"{node.name}:", style="green on black")
         for el in node.body:
-            self._console.print(f"\t|{el.name}", style="green on black")
+            self._console.print(
+                f"\t|{getattr(el, 'name', 'unknown')}", style="green on black"
+            )
         self.generic_visit(node)
         self._context_stack.pop()
 
@@ -161,17 +163,26 @@ class ASTAnalyzer(ast.NodeVisitor):
             style=f"{color} on black",
         )
         func_obj = None
-        func_obj = getattr(self._context_stack[-1], node.name)
-        code = ast.get_source_segment(self._source, node)
-        code_hash = hash(code)
-        fever_obj = FeverFunction(
-            node.name, uuid1(), node, [], func_obj, code_hash, code=code
-        )
-        if module_level:
-            self._context["functions"].append(fever_obj)
+        if inspect.isfunction(self._context_stack[-1]):
+            # FIXME: Implement nested functions!
+            self._console.print(
+                "[WARNING] Nested functions are not supported yet. Skipping nested function.",
+                style="red on black",
+            )
         else:
-            self._context["methods"][self._context["classes"][-1]].append(fever_obj)
+            func_obj = getattr(self._context_stack[-1], node.name)
+            self._context_stack.append(func_obj)
+            code = ast.get_source_segment(self._source, node)
+            code_hash = hash(code)
+            fever_obj = FeverFunction(
+                node.name, uuid1(), node, [], func_obj, code_hash, code=code
+            )
+            if module_level:
+                self._context["functions"].append(fever_obj)
+            else:
+                self._context["methods"][self._context["classes"][-1]].append(fever_obj)
         self.generic_visit(node)
+        self._context_stack.pop()
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
         self._console.print(Pretty(node))
