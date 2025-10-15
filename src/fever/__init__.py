@@ -100,6 +100,12 @@ class Fever:
         console = self._console_if if self._verbosity >= 1 else ConsoleInterface(None)
         for module_name in self.dependency_tracker.all_imports:
             console.print(f"Inspecting module '{module_name}'", style="purple on black")
+            if module_name not in sys.modules:
+                console.print(
+                    f"Module '{module_name}' not found in sys.modules, skipping.",
+                    style="red on black",
+                )
+                continue
             module_obj: ModuleType = sys.modules[module_name]
             cmp_fever_module: FeverModule = self._ast_analyzer.analyze(
                 module_name, module_obj, getattr(module_obj, "__file__")
@@ -131,7 +137,6 @@ class Fever:
                         # to refresh imports or references.
                         # FIXME: This assert is broken. We need the hierarchy of the
                         # function definition. It will only work for level 0 (module).
-                        # module_namespace = vars(module_obj)
                         # assert hasattr(
                         #     module_namespace[fever_callable.name], "__wrapped__"
                         # ), (
@@ -139,7 +144,15 @@ class Fever:
                         #     + "and so is not in the registry. "
                         #     + "This should not happen, please make a bug report."
                         # )
+                        # NOTE: Here we need to put the module namespace into
+                        # the registry namespace so that exec() can access the globals
+                        # during execution. This seems like the most robust solution
+                        # right now, but I will think about it again and implement loads
+                        # of tests.
                         registry_namespace = self.registry._FUNCTION_DEFS[module_name]
+                        module_namespace = vars(module_obj)
+                        for k, v in module_namespace.items():
+                            registry_namespace[k] = v
                         exec(cmp_func.code, registry_namespace)
                 else:
                     self.registry.add_function(module_name, cmp_func)
@@ -157,7 +170,6 @@ class Fever:
                             # FIXME: This assert is broken. We need the hierarchy of the
                             # method definition. It will only work for level 1 (class in
                             # module).
-                            # module_namespace = vars(module_obj)
                             # assert hasattr(
                             #     getattr(
                             #         module_namespace[cmp_class.name],
@@ -169,9 +181,12 @@ class Fever:
                             #     + "and so is not in the registry. "
                             #     + "This should not happen, please make a bug report."
                             # )
+                            module_namespace = vars(module_obj)
                             registry_namespace = self.registry._CLASS_METHOD_DEFS[
                                 module_name
                             ][cmp_class.name]
+                            for k, v in module_namespace.items():
+                                registry_namespace[k] = v
                             exec(cmp_method.code, registry_namespace)
                     else:
                         self.registry.add_method(module_name, cmp_class, cmp_method)
@@ -181,4 +196,4 @@ class Fever:
         Rerun the entire call graph from given entry point (callable UUID), but use
         cached results for every node in the graph that wasn't reloaded.
         """
-        pass
+        raise NotImplementedError
