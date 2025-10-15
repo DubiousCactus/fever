@@ -12,7 +12,7 @@ import inspect
 import os
 import sys
 from collections import defaultdict
-from importlib.abc import Loader, MetaPathFinder, SourceLoader
+from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Dict, List, Tuple
@@ -22,30 +22,6 @@ import networkx as nx
 from fever.hooks import ModuleLoadHook, NewImportHook
 
 from .utils import ConsoleInterface
-
-
-class TestLoader(Loader):
-    def __init__(self, name: str, path: str):
-        print(f"TestLoader: Loading module {name} from {path}")
-
-
-class MyLoader(SourceLoader):
-    def __init__(self, fullname, path):
-        print(f"SourceLoader: Loading module {fullname} from {path}")
-        self.fullname = fullname
-        self.path = path
-
-    def get_filename(self, fullname):
-        return self.path
-
-    def get_data(self, filename):
-        """exec_module is already defined for us, we just have to provide a way
-        of getting the source code of the module"""
-        with open(filename) as f:
-            data = f.read()
-        # do something with data ...
-        # eg. ignore it... return "print('hello world')"
-        return data
 
 
 class DependencyTracker(MetaPathFinder, Loader):
@@ -76,15 +52,9 @@ class DependencyTracker(MetaPathFinder, Loader):
             f"User modules: {', '.join(self._user_modules.keys())}",
             style="blue on black",
         )
-        # print(self._user_modules)
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
         builtins.__import__ = self._import
         sys.meta_path.insert(0, self)
-        # sys.path_hooks.insert(0, FileFinder.path_hook((self.test_loader, ["*.py"])))
-        # sys.path_hooks.insert(0, FileFinder.path_hook((TestLoader, ["*.py"])))
-        # clear any loaders that might already be in use by the FileFinder
-        # sys.path_importer_cache.clear()
-        # importlib.invalidate_caches()
 
     def cleanup(self):
         """
@@ -95,9 +65,6 @@ class DependencyTracker(MetaPathFinder, Loader):
         for finder in sys.meta_path.copy():
             if isinstance(finder, self.__class__):
                 sys.meta_path.remove(finder)
-
-    def test_loader(self, name: str, path: str):
-        print(f"Loading module {name} from {path}")
 
     def _scan_user_modules(self) -> Dict[str, str]:
         user_modules = {}
@@ -122,7 +89,6 @@ class DependencyTracker(MetaPathFinder, Loader):
     def exec_module(self, module) -> None:
         file_path = None
         if module_spec := getattr(module, "__spec__", None):
-            # print(module_spec)
             file_path = module_spec.origin
             self._user_modules[module_spec.name] = file_path
             assert file_path is not None
@@ -177,10 +143,6 @@ class DependencyTracker(MetaPathFinder, Loader):
                 submodule_locations = None
             if not os.path.exists(file_path):
                 continue
-
-            print(
-                f"Loading module {fullname} (path={path}, target={target}) stored in "
-            )
 
             # INFO: Finding the caller module in the finder seems difficult, probably  due
             # to the import chains that call the finder and since we use the call frame to
