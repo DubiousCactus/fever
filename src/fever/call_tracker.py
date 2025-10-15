@@ -30,6 +30,7 @@ class CallTracker(RegistryAddHook):
         @wraps(func)
         def wrapper(*args, **kwargs):
             nonlocal self
+            # FIXME: Decorated methods such as @property don't work!
             # WARN: Properly track the caller object! We want the parent if it was an
             # object, or if it was within another function. I made some attempt at this,
             # but I need to test it and make sure it handles all edge cases.

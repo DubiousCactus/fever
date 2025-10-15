@@ -24,8 +24,6 @@ class ConsoleInterface:
 def is_user_module(
     module_name: str, ignore_dirs: List[str], module_path: Optional[str] = None
 ) -> Tuple[bool, Optional[str]]:
-    # FIXME: This current solution is kinda fragile. I need something robust. I also
-    # desperately need unit tests!
     if module_name == "":
         return False, None
     module_dir = os.path.dirname(module_path) if module_path is not None else None

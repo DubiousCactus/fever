@@ -23,11 +23,6 @@ from fever.hooks import ModuleLoadHook, NewImportHook
 
 from .utils import ConsoleInterface
 
-# FIXME: Imports such as: from module import A don't work. They're quite tricky to
-# implement, but I think that the PathEntryFinder may be my salvation. give it a shot
-# before releasing v0.0.1! Fever should work on the matchbox project, which I consider
-# sufficiently complex to validate the tool. Then we should create a test suite.
-
 
 class TestLoader(Loader):
     def __init__(self, name: str, path: str):
@@ -137,8 +132,6 @@ class DependencyTracker(MetaPathFinder, Loader):
                     style="black on white",
                 )
                 code_str = f.read()  # Read the source code
-                # FIXME: If this is an empty file, we need to execute every submodule in
-                # this namespace.
                 self._console.print("Done!", style="green on black")
             self._console.print("\t - Executing module...", style="black on white")
             exec(
@@ -177,43 +170,31 @@ class DependencyTracker(MetaPathFinder, Loader):
         for entry in path:
             if os.path.isdir(os.path.join(entry, name)):
                 # this module has children modules
-                filename = os.path.join(entry, name, "__init__.py")
+                file_path = os.path.join(entry, name, "__init__.py")
                 submodule_locations = [os.path.join(entry, name)]
             else:
-                filename = os.path.join(entry, name + ".py")
+                file_path = os.path.join(entry, name + ".py")
                 submodule_locations = None
-            if not os.path.exists(filename):
+            if not os.path.exists(file_path):
                 continue
 
             print(
                 f"Loading module {fullname} (path={path}, target={target}) stored in "
             )
+
+            # INFO: Finding the caller module in the finder seems difficult, probably  due
+            # to the import chains that call the finder and since we use the call frame to
+            # find the caller. So we use the __import__ override hook for this, which is
+            # also very useful for re-imports that don't call the finder/loader. That way we
+            # can keep track of dependencies everywhere, which we couldn't do with just the
+            # loader/finder.
             return importlib.util.spec_from_file_location(
                 fullname,
-                filename,
+                file_path,
                 loader=self,
                 submodule_search_locations=submodule_locations,
             )
         return None
-        user_path = self._user_modules.get(fullname, None)
-        if user_path is None:
-            if self._show_skips:
-                self._console.print(
-                    f"Skipping non-user module '{fullname}'", style="red on black"
-                )
-            return None
-        print(
-            f"Loading module {fullname} (path={path}, target={target}) stored in {user_path}"
-        )
-        if path is not None:
-            print(f"Searching for submodule {fullname} in {path}, with target {target}")
-        # INFO: Finding the caller module in the finder seems difficult, probably  due
-        # to the import chains that call the finder and since we use the call frame to
-        # find the caller. So we use the __import__ override hook for this, which is
-        # also very useful for re-imports that don't call the finder/loader. That way we
-        # can keep track of dependencies everywhere, which we couldn't do with just the
-        # loader/finder.
-        return importlib.util.spec_from_file_location(fullname, user_path, loader=self)
 
     def invalidate_caches(self):
         self._user_modules = {}
