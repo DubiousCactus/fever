@@ -1,6 +1,6 @@
 [project]
 name = "fever"
-version = "0.0.1"
+version = "0.0.2"
 description = "A very capable and fully transparent hot-reloading system with advanced caching."
 readme = "README.md"
 authors = [
