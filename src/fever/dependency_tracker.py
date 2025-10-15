@@ -245,12 +245,14 @@ class DependencyTracker(MetaPathFinder, Loader):
                 )
             return module
 
+        composite_name = name if len(fromlist) == 0 else name + "." + ".".join(fromlist)
         self._console.print(
-            f"Importing '{name}' from module '{caller_module[0]}' defined in '{caller_module[1]}",
+            f"Importing '{composite_name}' "
+            + f"from module '{caller_module[0]}' defined in '{caller_module[1]}",
             style="yellow on black",
         )
         if caller_module[0] is not None:
-            self._dep_graph.add_edge(caller_module[0], name)
+            self._dep_graph.add_edge(caller_module[0], composite_name)
 
         for hook in self._new_import_hooks:
             hook.on_new_import(name, module)
