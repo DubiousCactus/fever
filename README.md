@@ -58,10 +58,25 @@ and update callers that depend on the result of the updated callee.
     functions).
     c. Handle loops in a smart way! Aggregate results when possible, save to disk, or
     opt in for a given strategy?
-2. Handle multiprocessing for PyTorch dataloaders.
+2. (TODO) Handle multiprocessing for PyTorch dataloaders.
 3. Have a more flexible API that lets us do more things:
     a. Define the scope of hot reloading for a given "root callable".
     b. Allow to hang on exception.
     c. Allow saving a whole execution graph on disk, letting us replay for debugging
     step by step and rewinding, and letting us hot-reload on a "playthrough" file.
-4. Handling GPU computation???? (no idea what/how/why yet).
+4. (TODO) Handling GPU computation???? (no idea what/how/why yet).
+
+
+## Roadmap
+
+- [x] v0.0.1: Basic proof of concept for hot code reloading only callables that changed
+  on disk
+- [x] v0.0.2: Demonstrate the PoC on one of my complex projects (matchbox)
+- [x] v0.0.3: Implement a reliable and unit-tested import hook mechanism
+- [ ] v0.0.4: Implement a reliable and unit-tested hot reloading mechanism
+- [ ] v0.0.5: Add interface to file watcher to trigger reload events
+- [ ] v0.0.6: Implement smart caching PoC
+- [ ] v0.0.7: Implement a reliable and Unit-tested smart caching mechanism
+- [ ] v0.0.8: 
+- [ ] v0.0.9: PDB++ TUI integration + flexible API
+- [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI
