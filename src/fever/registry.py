@@ -54,7 +54,7 @@ class Registry(ModuleLoadHook):
         return None
 
     def find_class_by_name(self, name: str) -> FeverClass | None:
-        return None
+        raise NotImplementedError
 
     def add_function(self, module_name: str, callable: FeverFunction) -> None:
         raise NotImplementedError
@@ -73,11 +73,6 @@ class Registry(ModuleLoadHook):
         raise NotImplementedError
 
     def on_module_load(self, module_name: str, code_str: str) -> None:
-        if module_name == "fever":
-            # TODO: Find a better way? But in fact, our import hook already excludes
-            # non-user code, so this problem arises only when testing fever from
-            # fever's project!
-            return
         self._console.print(
             f"Analyzing AST for module '{module_name}'", style="blue on black"
         )
