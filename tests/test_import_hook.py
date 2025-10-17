@@ -25,9 +25,13 @@ class TestImportHook(unittest.TestCase):
             "module_c",
             "module_d",
             "module_e",
+            "module_f",
             "module_z",
             "submodules",
             "submodules.module_e",
+            "subsub",
+            "submodules.subsub",
+            "submodules.subsub.module_f",
         ]
         for mod in list(sys.modules.keys()):
             if mod in cleanup_modules:
@@ -126,6 +130,7 @@ class TestImportHook(unittest.TestCase):
         module_e.function_e()
         self.assertTrue("function_e" in dir(module_e))
         self.assertTrue("ClassE" in dir(module_e))
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
         self.assertTrue(
             "submodules.module_e" in self.fever.dependency_tracker.all_imports
         )
@@ -135,6 +140,7 @@ class TestImportHook(unittest.TestCase):
 
         function_e()
         self.assertTrue("function_e" in locals())
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
         self.assertTrue(
             "submodules.module_e" in self.fever.dependency_tracker.all_imports
         )
@@ -145,6 +151,48 @@ class TestImportHook(unittest.TestCase):
         e = ClassE()
         e.method_e()
         self.assertTrue("ClassE" in locals())
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
         self.assertTrue(
             "submodules.module_e" in self.fever.dependency_tracker.all_imports
+        )
+
+    def test_from_submodule_import_module(self):
+        from submodules.subsub import module_f  # noqa: F401
+
+        module_f.function_f()
+        self.assertTrue("function_f" in dir(module_f))
+        self.assertTrue("ClassF" in dir(module_f))
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
+        self.assertTrue(
+            "submodules.subsub" in self.fever.dependency_tracker.all_imports
+        )
+        self.assertTrue(
+            "submodules.subsub.module_f" in self.fever.dependency_tracker.all_imports
+        )
+
+    def test_from_subsubmodule_import_func(self):
+        from submodules.subsub.module_f import function_f  # noqa: F401
+
+        function_f()
+        self.assertTrue("function_f" in locals())
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
+        self.assertTrue(
+            "submodules.subsub" in self.fever.dependency_tracker.all_imports
+        )
+        self.assertTrue(
+            "submodules.subsub.module_f" in self.fever.dependency_tracker.all_imports
+        )
+
+    def test_from_submsubodule_import_class(self):
+        from submodules.subsub.module_f import ClassF  # noqa: F401
+
+        f = ClassF()
+        f.method_f()
+        self.assertTrue("ClassF" in locals())
+        self.assertTrue("submodules" in self.fever.dependency_tracker.all_imports)
+        self.assertTrue(
+            "submodules.subsub" in self.fever.dependency_tracker.all_imports
+        )
+        self.assertTrue(
+            "submodules.subsub.module_f" in self.fever.dependency_tracker.all_imports
         )
