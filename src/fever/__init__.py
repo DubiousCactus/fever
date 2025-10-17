@@ -34,7 +34,7 @@ class Fever:
         console = None if self._verbosity == 0 else (rich_console or Console())
         self._console_if = ConsoleInterface(console)
         self._ast_analyzer = ASTAnalyzer(
-            self._console_if if self._verbosity >= 2 else ConsoleInterface(None)
+            self._console_if if self._verbosity >= 3 else ConsoleInterface(None)
         )
         self.dependency_tracker = DependencyTracker(
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None)
