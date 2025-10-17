@@ -59,7 +59,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             style="blue on black",
         )
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
-        builtins.__import__ = self._import
+        # builtins.__import__ = self._import
         sys.meta_path.insert(0, self)
 
     def cleanup(self):
@@ -167,6 +167,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             # also very useful for re-imports that don't call the finder/loader. That way we
             # can keep track of dependencies everywhere, which we couldn't do with just the
             # loader/finder.
+            self._dep_graph.add_node(fullname)
             return importlib.util.spec_from_file_location(
                 fullname,
                 file_path,
@@ -224,9 +225,14 @@ class DependencyTracker(MetaPathFinder, Loader):
             # INFO: It turns out that the composite name is not given to the meta
             # finder! So that means that the import function loads the entire module and
             # returns only the function of interest anyway, right?
-            for el in composite_name.split("."):
+            parts = composite_name.split(".")
+            for i, el in enumerate(parts):
                 if el in sys.modules:
+                    # Either the element is a function
                     self._dep_graph.add_edge(caller_module[0], el)
+                elif ".".join(parts[: i + 1]) in sys.modules:
+                    # Or the combination is a submodule
+                    self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
 
         for hook in self._new_import_hooks:
             hook.on_new_import(name, module)
