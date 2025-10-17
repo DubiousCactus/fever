@@ -216,7 +216,17 @@ class DependencyTracker(MetaPathFinder, Loader):
             style="yellow on black",
         )
         if caller_module[0] is not None:
-            self._dep_graph.add_edge(caller_module[0], composite_name)
+            # WARN: If the composite name is module.func or module.class we
+            # map it to module! But ideally we dont want to reload the entire
+            # module, so we need a way to specify that func is in namespace module. For
+            # now we load the entire module because it's much simpler and it's not
+            # critical that we only load specific items.
+            # INFO: It turns out that the composite name is not given to the meta
+            # finder! So that means that the import function loads the entire module and
+            # returns only the function of interest anyway, right?
+            for el in composite_name.split("."):
+                if el in sys.modules:
+                    self._dep_graph.add_edge(caller_module[0], el)
 
         for hook in self._new_import_hooks:
             hook.on_new_import(name, module)
