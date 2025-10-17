@@ -44,6 +44,12 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._show_skips = show_skips
         # self._user_modules = self._scan_user_modules()
         caller_code_obj = sys._getframe(2).f_code  # 2 bc 1 is Fever.__init__
+        self._console.print(
+            "Calling fever dep tracker from",
+            inspect.getmodule(caller_code_obj).__name__,
+            inspect.getfile(caller_code_obj),
+            style="italic blue on black",
+        )
         self._user_modules[inspect.getmodule(caller_code_obj).__name__] = (
             inspect.getfile(caller_code_obj)
         )
@@ -117,7 +123,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         make a more educated guess about what spec to return.
         """
         if path is None or path == "" or path == []:
-            path = [self.curdir]  # top level import --
+            path = [os.getcwd()]  # top level import --
         if "." in fullname:
             *parents, name = fullname.split(".")
         else:
@@ -134,14 +140,25 @@ class DependencyTracker(MetaPathFinder, Loader):
                     )
                 return None
         for entry in path:
-            if os.path.isdir(os.path.join(entry, name)):
-                # this module has children modules
-                file_path = os.path.join(entry, name, "__init__.py")
-                submodule_locations = [os.path.join(entry, name)]
-            else:
-                file_path = os.path.join(entry, name + ".py")
-                submodule_locations = None
-            if not os.path.exists(file_path):
+            file_path, submodule_locations = None, None
+            self._console.print(
+                f"Searching for module '{fullname}' in path entry '{entry}'",
+                style="italic yellow on black",
+            )
+            for root, dirs, files in os.walk(entry):
+                for d in dirs:
+                    if d == name:
+                        # this module has children modules
+                        file_path = os.path.join(root, name, "__init__.py")
+                        submodule_locations = [os.path.join(root, name)]
+
+                for f in files:
+                    if not f.endswith(".py"):
+                        continue
+                    if f.split(".")[0] == name:
+                        file_path = os.path.join(root, f)
+                        submodule_locations = None
+            if file_path is None:
                 continue
 
             # INFO: Finding the caller module in the finder seems difficult, probably  due
@@ -156,6 +173,9 @@ class DependencyTracker(MetaPathFinder, Loader):
                 loader=self,
                 submodule_search_locations=submodule_locations,
             )
+        self._console.print(
+            f"Module '{fullname}' not found in path '{path}'", style="red on black"
+        )
         return None
 
     def invalidate_caches(self):
@@ -164,6 +184,7 @@ class DependencyTracker(MetaPathFinder, Loader):
     def _import(
         self, name: str, globals=None, locals=None, fromlist=(), level=0
     ) -> ModuleType:
+        fromlist = fromlist or ()
         module = self._original_importer(
             name, globals=globals, locals=locals, fromlist=fromlist, level=level
         )
