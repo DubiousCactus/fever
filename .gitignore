@@ -5,3 +5,4 @@ uv.lock
 .venv/
 .pytest_cache/
 dist/
+tmp_test_imports_backup

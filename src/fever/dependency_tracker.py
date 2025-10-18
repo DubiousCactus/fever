@@ -6,7 +6,6 @@
 # Distributed under terms of the MIT license.
 
 
-import builtins
 import importlib
 import inspect
 import os
@@ -15,7 +14,7 @@ from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
 from types import ModuleType
-from typing import Dict, List, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import networkx as nx
 
@@ -24,10 +23,28 @@ from fever.hooks import ModuleLoadHook, NewImportHook
 from .utils import ConsoleInterface
 
 
+def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None]:
+    file_path, submodule_locations = None, None
+    if (module_init := os.path.join(root, name, "__init__.py")) and os.path.isfile(
+        module_init
+    ):
+        # this module has children modules
+        file_path = module_init
+        submodule_locations = [os.path.dirname(module_init)]
+    elif (module_path := os.path.join(root, f"{name}.py")) and os.path.isfile(
+        module_path
+    ):
+        file_path = module_path
+    return file_path, submodule_locations
+
+
 class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
     def __init__(self, console: ConsoleInterface):
+        self.absolute_ignore_dirs = [
+            os.path.join(os.getcwd(), d) for d in self.ignore_dirs
+        ]
         self._console = console
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
@@ -39,10 +56,9 @@ class DependencyTracker(MetaPathFinder, Loader):
         """
         Setup the import hook to keep track of user module imports.
         """
-        self._original_importer = builtins.__import__
+        # self._original_importer = builtins.__import__
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
-        # self._user_modules = self._scan_user_modules()
         caller_code_obj = sys._getframe(2).f_code  # 2 bc 1 is Fever.__init__
         self._console.print(
             "Calling fever dep tracker from",
@@ -53,11 +69,6 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._user_modules[inspect.getmodule(caller_code_obj).__name__] = (
             inspect.getfile(caller_code_obj)
         )
-        self.curdir = os.getcwd()
-        self._console.print(
-            f"User modules: {', '.join(self._user_modules.keys())}",
-            style="blue on black",
-        )
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
         # builtins.__import__ = self._import
         sys.meta_path.insert(0, self)
@@ -67,27 +78,10 @@ class DependencyTracker(MetaPathFinder, Loader):
         Remove the import hook.
         """
         self._console.print("Cleaning up the import hook", style="green on black")
-        builtins.__import__ = self._original_importer
+        # builtins.__import__ = self._original_importer
         for finder in sys.meta_path.copy():
             if isinstance(finder, self.__class__):
                 sys.meta_path.remove(finder)
-
-    def _scan_user_modules(self) -> Dict[str, str]:
-        user_modules = {}
-        base_dir = os.path.curdir
-        for root, dirs, files in os.walk(base_dir):
-            for ignore_dir in self.ignore_dirs:
-                dirs[:] = [d for d in dirs if d != ignore_dir and not d.startswith(".")]
-            for f in files:
-                if not f.endswith(".py"):
-                    continue
-                module_name = f.split(".")[0]
-                user_modules[module_name] = os.path.join(root, f)
-            for d in dirs:
-                if not os.path.isfile(os.path.join(root, d, "__init__.py")):
-                    continue
-                user_modules[d] = os.path.join(root, d, "__init__.py")
-        return user_modules
 
     def create_module(self, spec: ModuleSpec) -> ModuleType | None:
         return None  # Fallback to default machinery
@@ -112,58 +106,58 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            for hook in self._module_load_hooks:
-                hook.on_module_load(module.__name__, code_str)
+            map(
+                lambda h: h.on_module_load(module.__name__, code_str),
+                self._module_load_hooks,
+            )
 
-    def find_spec(self, fullname: str, path: str, target=None) -> ModuleSpec | None:
+    def find_spec(
+        self, fullname: str, path: Sequence[str] | None, target=None
+    ) -> ModuleSpec | None:
         """
         For top-level imports, path will be None. Otherwise, this is a search for
         a subpackage or module and path will be the value of __path__ from the parent
         package. When passed in, target is a module object that the finder may use to
         make a more educated guess about what spec to return.
         """
-        if path is None or path == "" or path == []:
-            path = [os.getcwd()]  # top level import --
-        if "." in fullname:
-            *parents, name = fullname.split(".")
-        else:
-            name = fullname
-        if os.path.commonpath([path[0], str(self.curdir)]) != self.curdir:
+        _ = target
+        curdir = os.getcwd()
+        path = [curdir] if path is None or path == [] else path
+        name = fullname.split(".")[-1] if "." in fullname else fullname
+        if os.path.commonpath([path[0], str(curdir)]) != curdir:
             return None
-        for ignore_dir in self.ignore_dirs:
-            ignore_dir = os.path.join(self.curdir, ignore_dir)
-            if os.path.commonpath([path[0], ignore_dir]) == ignore_dir:
+
+        for entry in path:
+            if any([d in entry for d in self.absolute_ignore_dirs]):
                 if self._show_skips:
                     self._console.print(
-                        f"Skipping ignored directory '{ignore_dir}' in path '{path[0]}'",
-                        style="red on black",
+                        f"Skipping ignored path '{entry}'", style="red on black"
                     )
                 return None
-        for entry in path:
-            file_path, submodule_locations = None, None
             self._console.print(
                 f"Searching for module '{fullname}' in path entry '{entry}'",
                 style="italic yellow on black",
             )
-            for root, dirs, files in os.walk(entry):
-                for ignore_dir in self.ignore_dirs:
-                    dirs[:] = [
-                        d for d in dirs if d != ignore_dir and not d.startswith(".")
-                    ]
-                for d in dirs:
-                    if d == name:
-                        # this module has children modules
-                        file_path = os.path.join(root, name, "__init__.py")
-                        submodule_locations = [os.path.join(root, name)]
-
-                for f in files:
-                    if not f.endswith(".py"):
-                        continue
-                    if f.split(".")[0] == name:
-                        file_path = os.path.join(root, f)
-                        submodule_locations = None
+            file_path, submodule_locations = find_module_path(entry, name)
             if file_path is None:
-                continue
+                # NOTE: In edge cases, the user may alter the system path to emulate
+                # project imports from other locations within the project's tree, such
+                # as git submodules or vendors. We handle this here:
+                for sys_path in sys.path:
+                    self._console.print(
+                        f"Searching for {fullname} in sys path {sys_path}",
+                        style="italic yellow on black",
+                    )
+                    if any([d in sys_path for d in self.absolute_ignore_dirs]):
+                        continue
+                    if os.path.commonpath([entry, sys_path]) == entry:
+                        file_path, submodule_locations = find_module_path(
+                            sys_path, name
+                        )
+                        if file_path:  # Found it
+                            break
+                if file_path is None:
+                    continue
 
             # INFO: Finding the caller module in the finder seems difficult, probably  due
             # to the import chains that call the finder and since we use the call frame to
@@ -238,9 +232,7 @@ class DependencyTracker(MetaPathFinder, Loader):
                     # Or the combination is a submodule
                     self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
 
-        for hook in self._new_import_hooks:
-            hook.on_new_import(name, module)
-
+        map(lambda h: h.on_new_import(name, module), self._new_import_hooks)
         return module
 
     def register_new_import_hook(self, hook: NewImportHook):

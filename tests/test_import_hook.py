@@ -14,6 +14,21 @@ from fever import Fever
 # from foo.bar import baz where foo is a module and bar is a submodule
 # ... and so on
 class TestImportHook(unittest.TestCase):
+    _test_modules = [
+        "module_a",
+        "module_b",
+        "module_c",
+        "module_d",
+        "module_e",
+        "module_f",
+        "module_z",
+        "submodules",
+        "submodules.module_e",
+        "subsub",
+        "submodules.subsub",
+        "submodules.subsub.module_f",
+    ]
+
     def setUp(self):
         sys.path.append(os.path.join(os.getcwd(), "tests/test_imports"))
         self.fever = Fever()
@@ -21,37 +36,50 @@ class TestImportHook(unittest.TestCase):
 
     def tearDown(self):
         self.fever.cleanup()
-        cleanup_modules = [
-            "module_a",
-            "module_b",
-            "module_c",
-            "module_d",
-            "module_e",
-            "module_f",
-            "module_z",
-            "submodules",
-            "submodules.module_e",
-            "subsub",
-            "submodules.subsub",
-            "submodules.subsub.module_f",
-        ]
         for mod in list(sys.modules.keys()):
-            if mod in cleanup_modules:
+            if mod in self._test_modules:
                 del sys.modules[mod]
         for k in locals().keys():
             del locals()[k]
+        sys.path.pop()
 
     def test_simple_wrong(self):
         self.assertRaises(ModuleNotFoundError, lambda: exec("import module_z"))
         self.assertFalse("module_z" in self.fever.dependency_tracker.all_imports)
 
     def test_not_user(self):
+        import importlib  # noqa: F401
+        import json  # noqa: F401
         import pickle  # noqa: F401
 
         import matplotlib  # noqa: F401
         import networkx  # noqa: F401
         import pdbpp  # noqa: F401
+        import requests  # noqa: F401
         import rich  # noqa: F401
+
+        self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
+
+    def test_not_user_fuzzy(self):
+        import requests
+
+        word_site = "https://www.mit.edu/~ecprice/wordlist.10000"
+
+        response = requests.get(word_site)
+        forbidden_words = ["dist", "src"]
+
+        for word in response.content.splitlines():
+            if word in self._test_modules:
+                continue
+            word = word.strip().decode("utf-8")
+            if word in forbidden_words:
+                continue
+            try:
+                exec(f"import {word}")
+            except ModuleNotFoundError:
+                pass
+            except SyntaxError:
+                pass
 
         self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
 

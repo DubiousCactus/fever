@@ -75,7 +75,7 @@ class Fever:
         """
         Remove the import hook.
         """
-        self.dependency_tracker.teardown()
+        self.dependency_tracker.cleanup()
 
     def plot_dependency_graph(self):
         self.dependency_tracker.plot()
