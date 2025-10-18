@@ -11,6 +11,8 @@ from fever import Fever
 # from foo import bar where bar is a module
 # from foo import bar where bar is a class
 # from foo import * where we want to import the foo module basically
+# from foo.bar import baz where foo is a module and bar is a submodule
+# ... and so on
 class TestImportHook(unittest.TestCase):
     def setUp(self):
         sys.path.append(os.path.join(os.getcwd(), "tests/test_imports"))
@@ -42,6 +44,16 @@ class TestImportHook(unittest.TestCase):
     def test_simple_wrong(self):
         self.assertRaises(ModuleNotFoundError, lambda: exec("import module_z"))
         self.assertFalse("module_z" in self.fever.dependency_tracker.all_imports)
+
+    def test_not_user(self):
+        import pickle  # noqa: F401
+
+        import matplotlib  # noqa: F401
+        import networkx  # noqa: F401
+        import pdbpp  # noqa: F401
+        import rich  # noqa: F401
+
+        self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
 
     def test_simple(self):
         import module_d  # noqa: F401

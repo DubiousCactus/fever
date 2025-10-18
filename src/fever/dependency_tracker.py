@@ -77,7 +77,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         base_dir = os.path.curdir
         for root, dirs, files in os.walk(base_dir):
             for ignore_dir in self.ignore_dirs:
-                dirs[:] = [d for d in dirs if d != ignore_dir]
+                dirs[:] = [d for d in dirs if d != ignore_dir and not d.startswith(".")]
             for f in files:
                 if not f.endswith(".py"):
                     continue
@@ -146,6 +146,10 @@ class DependencyTracker(MetaPathFinder, Loader):
                 style="italic yellow on black",
             )
             for root, dirs, files in os.walk(entry):
+                for ignore_dir in self.ignore_dirs:
+                    dirs[:] = [
+                        d for d in dirs if d != ignore_dir and not d.startswith(".")
+                    ]
                 for d in dirs:
                     if d == name:
                         # this module has children modules
