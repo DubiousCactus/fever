@@ -10,14 +10,14 @@ before the user even gets a hold of it.
 
 ## How?
 
-1. Import hooks and AST analysis
+### 1. Import hooks and AST analysis
 
 We first implement an [import hook](https://docs.python.org/3.14/reference/import.html#import-hooks)
 so that we can record module imports (and optionally a dependency graph). Then we build
 an AST of the code so that we can analyze all callables and keep track of: module-level
 functions, class methods, lambdas (well that's probably not gonna happen), etc.
 
-2. Monkey-patching and proxy callables
+### 2. Monkey-patching and proxy callables
 
 Once we found all the callables in a module, we can wrap them in a proxy upon import,
 before returning the code to the user. With this mechanism in place, we are able to
@@ -26,7 +26,7 @@ graph of the module and detect hash changes. Up to this point, everything that h
 is fully transparent to the user.
 
 
-3. Hot code reloading
+### 3. Hot code reloading
 
 Whenever the user calls for a reload, each changed callable is reloaded, and only that,
 and re-executed in the registry's isolated namespace. Thanks to the proxy wrapper, every
