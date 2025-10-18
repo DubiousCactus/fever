@@ -1,53 +1,37 @@
 # Proactive hot code reloading engine
 
-My previous attempt was reactive: detect which callable threw an exception, reload that
+[My previous attempt](https://github.com/DubiousCactus/matchbox?tab=readme-ov-file#3-an-interactive-coding-experience-for-fast-iteration-work-in-progress) was reactive: detect which callable threw an exception, reload that
 callable. We had to detect whether it was a class __init__, a class method, a
-module-level function or a lambda. This wouldn't scale and I had many holes to patch.
+module-level function or a lambda. This wouldn't scale, and I had many holes to patch.
 
-The new approach is proactive: we will hook into the __import__ builtin so that we can
-record module dependencies. Then we will build an AST of the code so that we can analyze
-all callables and keep track of: module-level functions, class methods, lambdas, etc.
-And we can keep track of their context too! 
-Finally we need to track which piece of code was changed in the tracked module (using
-our wrapper module for a given callable), ie hash all callables in the dependency graph
-of the module and detect hash changes. Each changed dependency will be reloaded, and we
-can then replace object and function references in the saved context.
-
+The new approach is proactive and requires analyzing and monkey-patching the user's code
+before the user even gets a hold of it.
 
 
 ## How?
 
-1. Import hooks
+1. Import hooks and AST analysis
 
-Install a middleware between the builtin __import__ and the user code, such that we
-intercept each call to import() and register the dependencies.
-i.e. in module A, user imports modules B and C --> register (B,C) as deps of A.
+We first implement an [import hook](https://docs.python.org/3.14/reference/import.html#import-hooks)
+so that we can record module imports (and optionally a dependency graph). Then we build
+an AST of the code so that we can analyze all callables and keep track of: module-level
+functions, class methods, lambdas (well that's probably not gonna happen), etc.
 
-2. Call tracking
+2. Monkey-patching and proxy callables
 
-We can track calls between all the callables in the program *at run time*! This is
-achieved by monkey-patching callables with a tracking wrapper, after finding all
-callables with AST analysis. We can do this on a per-module basis *during import*, fully
-transparent to the user. 
+Once we found all the callables in a module, we can wrap them in a proxy upon import,
+before returning the code to the user. With this mechanism in place, we are able to
+track which callable was changed on disk -- ie hash all callables in the dependency
+graph of the module and detect hash changes. Up to this point, everything that happened
+is fully transparent to the user.
 
-After monkey-patching all callables, we get a call graph that updates in real time :) We
-can now keep track of everything we need for careful hot code reloading.
 
 3. Hot code reloading
 
-Several ways of doing this? One way might be to keep a registry of callables, such that
-we can easily update their code in the registry and keep their cache there too. Not sure
-if that is the most efficient solution though!
-Another approach is to directly replace the code by recompiling and replacing the
-function pointers. Seems fine honestly, and we can use a registry for the cache only.
-
-I think the first approach is a bit easier to deal with caching. We may need to replace
-all callables with proxies though, such that the proxies are the interface to the
-registry. This shouldn't be too hard!
-
-
-But then we'll need some machinery (ie visitor pattern) to walk through the call graph
-and update callers that depend on the result of the updated callee.
+Whenever the user calls for a reload, each changed callable is reloaded, and only that,
+and re-executed in the registry's isolated namespace. Thanks to the proxy wrapper, every
+place where a function was previously imported and called will automatically call the
+new code. Pretty sweet, right?
 
 
 ## How does it differ from Jurigged and others?
@@ -77,6 +61,6 @@ and update callers that depend on the result of the updated callee.
 - [ ] v0.0.5: Add interface to file watcher to trigger reload events
 - [ ] v0.0.6: Implement smart caching PoC
 - [ ] v0.0.7: Implement a reliable and Unit-tested smart caching mechanism
-- [ ] v0.0.8: 
+- [ ] v0.0.8: Add a tool executable to wrap a script and launch the TUI
 - [ ] v0.0.9: PDB++ TUI integration + flexible API
 - [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI
