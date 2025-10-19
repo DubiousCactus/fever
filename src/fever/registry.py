@@ -15,6 +15,7 @@ from fever.ast_analysis import (
     FeverClass,
     FeverFunction,
     FeverModule,
+    generic_function,
 )
 from fever.dependency_tracker import ModuleLoadHook
 from fever.hooks import RegistryAddHook
@@ -22,6 +23,8 @@ from fever.utils import ConsoleInterface
 
 
 class Registry(ModuleLoadHook):
+    # FIXME: Get rid of these and instead place the code pointers in the _callables
+    # attribute! Just simplify all these dicts, it's a mess seriously.
     _FUNCTION_DEFS = defaultdict(dict)
     _CLASS_METHOD_DEFS = defaultdict(dict)
 
@@ -62,12 +65,18 @@ class Registry(ModuleLoadHook):
                     return method
         return None
 
-    def find_class_by_name(self, name: str) -> FeverClass | None:
-        raise NotImplementedError
+    def find_class_by_name(self, name: str, module_name: str) -> FeverClass | None:
+        for cls_ in self._callables[module_name].classes:
+            if cls_.name == name:
+                return cls_
+        return None
 
     def add_function(self, module_name: str, callable: FeverFunction) -> None:
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
+        assert callable != generic_function, (
+            "add_function(): Cannot register generic_function"
+        )
         if isinstance(callable, FeverFunction):
             self._callables[module_name].functions.append(callable)
         for hook in self._hooks:
@@ -76,7 +85,15 @@ class Registry(ModuleLoadHook):
     def add_method(
         self, module_name: str, class_: FeverClass, callable: FeverFunction
     ) -> None:
-        raise NotImplementedError
+        if module_name not in self._callables:
+            raise KeyError(f"'{module_name}' is not a tracked module")
+        assert callable != generic_function, (
+            "add_function(): Cannot register generic_function"
+        )
+        if isinstance(callable, FeverFunction):
+            self._callables[module_name].methods[class_].append(callable)
+        for hook in self._hooks:
+            hook.on_registry_add(self._callables[module_name])
 
     def on_module_load(self, module_name: str, code_str: str) -> None:
         self._console.print(

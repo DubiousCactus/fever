@@ -215,7 +215,29 @@ class Fever:
                                 registry_namespace[k] = v
                             exec(cmp_method.code, registry_namespace)
                     else:
-                        self.registry.add_method(module_name, cmp_class, cmp_method)
+                        # breakpoint()
+                        module_namespace = vars(module_obj)
+                        registry_namespace = self.registry._CLASS_METHOD_DEFS[
+                            module_name
+                        ][cmp_class.name]
+                        # FIXME: This is such a mess. Can we execute the code in an
+                        # isolated namespace, and then move the compiled function *only*
+                        # to the target namespace? Or would that break pointers in the
+                        # byte code?
+                        for k, v in module_namespace.items():
+                            if k in registry_namespace:
+                                continue
+                            registry_namespace[k] = v
+                        exec(cmp_method.code, registry_namespace)
+                        cmp_method.obj = registry_namespace[cmp_method.name]
+                        if class_ := self.registry.find_class_by_name(
+                            cmp_class.name, module_name
+                        ):
+                            self.registry.add_method(module_name, class_, cmp_method)
+                        else:
+                            raise RuntimeError(
+                                f"Class '{cmp_class.name}' not found in registry "
+                            )
 
             # TODO: Class definitions!
 

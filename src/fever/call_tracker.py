@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 import networkx as nx
 
-from fever.ast_analysis import FeverClass, FeverModule
+from fever.ast_analysis import FeverClass, FeverModule, generic_function
 from fever.hooks import RegistryAddHook
 from fever.registry import Registry
 from fever.utils import ConsoleInterface
@@ -81,6 +81,9 @@ class CallTracker(RegistryAddHook):
                 except:
                     caller_obj = None
 
+            assert func != generic_function, (
+                "Wrapped function is the generic function! This should never happen."
+            )
             func_name = func.__name__
             module_name = inspect.getmodule(func).__name__
             self._console.print(
@@ -132,12 +135,20 @@ class CallTracker(RegistryAddHook):
         return wrapper
 
     def on_registry_add(self, module: FeverModule) -> None:
+        # FIXME: Currently, we re-wrap every callable whenever this method is called!
+        # This is wrong, because we check whether func.obj is wrapped, but func.obj is
+        # never updated since we take the wrapper and replace the pointer in the module
+        # object. ie func.obj is always the original object! We need to re-implement the
+        # wrapping logic and simplify it. But let's first pass all tests.
         for func in module.functions:
             # FIXME: Nested functions can't be asserted this way
             # assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
             #     f"Function {func.name} was already wrapped! This is not supposed to happen."
             # )
             assert isinstance(func.obj, object)
+            assert func.obj != generic_function, (
+                f"on_registry_add(): function {func.name} is the generic function!"
+            )
             if func.name not in self._registry._FUNCTION_DEFS[module.root]:
                 self._registry._FUNCTION_DEFS[module.root][func.name] = func.obj
             if not hasattr(func.obj, "__wrapped__"):
@@ -153,6 +164,9 @@ class CallTracker(RegistryAddHook):
                 #     f"Function {method.name} was already wrapped! This is not supposed to happen."
                 # )
                 assert isinstance(method.obj, object)
+                assert method.obj != generic_function, (
+                    f"on_registry_add(): method {method.name} is the generic function!"
+                )
                 if class_.name not in self._registry._CLASS_METHOD_DEFS[module.root]:
                     self._registry._CLASS_METHOD_DEFS[module.root][class_.name] = {
                         method.name: method.obj
