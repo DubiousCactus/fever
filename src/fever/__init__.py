@@ -76,6 +76,7 @@ class Fever:
         Remove the import hook.
         """
         self.dependency_tracker.cleanup()
+        self.registry.cleanup()
 
     def plot_dependency_graph(self):
         self.dependency_tracker.plot()
@@ -152,6 +153,8 @@ class Fever:
                         registry_namespace = self.registry._FUNCTION_DEFS[module_name]
                         module_namespace = vars(module_obj)
                         for k, v in module_namespace.items():
+                            if k in registry_namespace:
+                                continue
                             registry_namespace[k] = v
                         exec(cmp_func.code, registry_namespace)
                 else:
@@ -186,6 +189,8 @@ class Fever:
                                 module_name
                             ][cmp_class.name]
                             for k, v in module_namespace.items():
+                                if k in registry_namespace:
+                                    continue
                                 registry_namespace[k] = v
                             exec(cmp_method.code, registry_namespace)
                     else:

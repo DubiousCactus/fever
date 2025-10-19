@@ -31,6 +31,15 @@ class Registry(ModuleLoadHook):
         self._callables: Dict[str, FeverModule] = {}
         self._hooks: List[RegistryAddHook] = []
 
+    def cleanup(self) -> None:
+        # WARN: This is important because the registry definitions are static class
+        # attributes, i.e. they persist across multiple instances of Registry. I may
+        # move them to instance attributes, but for now I like to think that it's safer
+        # like that in case we ever have multiple fever instances running in the same
+        # code base. This would prevent redefining functions.
+        self._FUNCTION_DEFS.clear()
+        self._CLASS_METHOD_DEFS.clear()
+
     def register_add_hook(self, hook: RegistryAddHook) -> None:
         self._hooks.append(hook)
 
@@ -80,5 +89,6 @@ class Registry(ModuleLoadHook):
         self._callables[module_name] = self._ast_analyzer.analyze(
             module_name, module, show_ast=False
         )
+        assert self._callables[module_name].obj == module
         for hook in self._hooks:
             hook.on_registry_add(self._callables[module_name])

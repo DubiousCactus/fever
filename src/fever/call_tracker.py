@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-# vim:fenc=utf-8
 #
 # Copyright © 2025-10-07 22:38:27 Théo Morales <theo.morales.fr@gmail.com>
 #
@@ -107,52 +105,64 @@ class CallTracker(RegistryAddHook):
                     self._call_graph[key][func]["weight"] = 1
                 else:
                     self._call_graph[key][func]["weight"] += 1
-            # Now, put/pull the function in the registry and always return a call
+            # Now, pull the function from the registry and always return a call
             # to the registry function! Simple as that. When we reload, we'll update in
             # the registry directly :)
-            # FIXME: Unless a callable is called at least once, hot code reloading won't
-            # work because the callable won't be in the registry! This should throw an
-            # exception.
             if callee_instance is None:
                 # function call
-                if func_name not in self._registry._FUNCTION_DEFS[module_name]:
-                    self._registry._FUNCTION_DEFS[module_name][func_name] = func
-                return self._registry._FUNCTION_DEFS[module_name][func_name](
-                    *args, **kwargs
+                func_entry = self._registry._FUNCTION_DEFS[module_name][func_name]
+                # TODO: We should allow wrapped callables, but we should make sure that
+                # the wrapper isn't this current one!
+                assert not hasattr(func_entry, "__wrapped__"), (
+                    "Callable wrapped recursively. This is not good."
                 )
+                return func_entry(*args, **kwargs)
             else:
                 # Method call
                 assert fever_class is not None
-                class_name = fever_class.name
-                if class_name not in self._registry._CLASS_METHOD_DEFS[module_name]:
-                    self._registry._CLASS_METHOD_DEFS[module_name][class_name] = {
-                        func_name: func
-                    }
-                elif (
-                    func_name
-                    not in self._registry._CLASS_METHOD_DEFS[module_name][class_name]
-                ):
-                    self._registry._CLASS_METHOD_DEFS[module_name][class_name][
-                        func_name
-                    ] = func
-                return self._registry._CLASS_METHOD_DEFS[module_name][class_name][
-                    func_name
-                ](*args, **kwargs)
+                method_entry = self._registry._CLASS_METHOD_DEFS[module_name][
+                    fever_class.name
+                ][func_name]
+                assert not hasattr(method_entry, "__wrapped__"), (
+                    "Callable wrapped recursively. This is not good."
+                )
+
+                return method_entry(*args, **kwargs)
 
         return wrapper
 
     def on_registry_add(self, module: FeverModule) -> None:
         for func in module.functions:
+            # FIXME: Nested functions can't be asserted this way
+            # assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
+            #     f"Function {func.name} was already wrapped! This is not supposed to happen."
+            # )
             assert isinstance(func.obj, object)
-            assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
-                f"Function {func.name} was already wrapped! This is not supposed to happen."
-            )
+            if func.name not in self._registry._FUNCTION_DEFS[module.root]:
+                self._registry._FUNCTION_DEFS[module.root][func.name] = func.obj
             setattr(module.obj, func.name, self.track_calls(func.obj))
             # FIXME: This invalidates the original func.obj right? I mean we won't be
             # using it, so should we update it?
         for class_, methods in module.methods.items():
             assert isinstance(class_, object)
             for method in methods:
+                # FIXME: Nested classes can't be asserted this way
+                # class_obj = getattr(module.obj, class_.name, None)
+                # assert not hasattr(getattr(class_obj, method.name), "__wrapped__"), (
+                #     f"Function {method.name} was already wrapped! This is not supposed to happen."
+                # )
+                assert isinstance(method.obj, object)
+                if class_.name not in self._registry._CLASS_METHOD_DEFS[module.root]:
+                    self._registry._CLASS_METHOD_DEFS[module.root][class_.name] = {
+                        method.name: method.obj
+                    }
+                elif (
+                    method.name
+                    not in self._registry._CLASS_METHOD_DEFS[module.root][class_.name]
+                ):
+                    self._registry._CLASS_METHOD_DEFS[module.root][class_.name][
+                        method.name
+                    ] = method.obj
                 setattr(
                     class_.obj,
                     method.name,

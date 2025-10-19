@@ -106,10 +106,8 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            map(
-                lambda h: h.on_module_load(module.__name__, code_str),
-                self._module_load_hooks,
-            )
+            for hook in self._module_load_hooks:
+                hook.on_module_load(module.__name__, code_str)
 
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target=None
@@ -232,7 +230,8 @@ class DependencyTracker(MetaPathFinder, Loader):
                     # Or the combination is a submodule
                     self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
 
-        map(lambda h: h.on_new_import(name, module), self._new_import_hooks)
+        for hook in self._new_import_hooks:
+            hook.on_new_import(name, module)
         return module
 
     def register_new_import_hook(self, hook: NewImportHook):
