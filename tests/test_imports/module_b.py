@@ -17,20 +17,27 @@ class TestCase:
         print(f"TestCase.__call__(); self.callable={self.callable}")
         self.callable("TestCase instance")
 
-    def elaborate_function(self, arg1: str, arg2: List[bool]):
-        print(f"Result of nested test: {self.child.nested_test(arg1)}")
+    def elaborate_function(self, arg1: str, arg2: List[bool]) -> str:
+        print(f"Result of nested test: {self.child.nested_test(arg1, arg2[0])}")
+        return str(self.child.nested_test(arg1, arg2[0]))
 
     def hello(self, name: str):
+        return f"hello {name}"
+
+    def hello_upper(self, name: str):
         a = lambda x: x.upper()
-        print(f"hello {a(name)}")
+        return f"hello {a(name)}"
 
     class NestedTestCase:
         def __init__(self, owner):
             self.owner = owner
 
-        def nested_test(self, name: str) -> int:
-            self.owner.hello(name)
-            return 1234
+        def nested_test(self, name: str, use_lambda: bool) -> str:
+            return (
+                self.owner.hello(name)
+                if not use_lambda
+                else self.owner.hello_upper(name)
+            )
 
 
 def other_module_level_func(name: str):

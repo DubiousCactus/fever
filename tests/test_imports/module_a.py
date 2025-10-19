@@ -1,15 +1,25 @@
-# import fever
 import random
 
 from module_b import TestCase, module_level_func, other_module_level_func
 
 
-# @fever.track_calls
-def function():
+def function() -> str:
     print("test.function()")
     test_module = TestCase()
+    return test_module.elaborate_function("world", [False, False, False])
+
+
+def function_deep_nested() -> str:
+    print("test.function_deep_nested()")
+    test_module = TestCase()
     test_module()
-    test_module.elaborate_function("world", [True, False, True])
+    return test_module.elaborate_function("world", [False, False, False])
+
+
+def function_with_lambda_call() -> str:
+    print("test.function_with_lambda_call()")
+    test_module = TestCase()
+    return test_module.elaborate_function("world", [True, False, True])
 
 
 def second_function():
