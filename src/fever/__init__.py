@@ -108,8 +108,16 @@ class Fever:
                 )
                 continue
             module_obj: ModuleType = sys.modules[module_name]
+            # NOTE: set module_obj = None to re-execute the module code. This way we can
+            # handle new definitions (new functions/classes) that were not present before.
+            # FIXME: Yeah for now I'm returning an empty code object for new functions,
+            # which should work fine. But it will break for new classes because we won't
+            # be able to find class methods. Although do we need to? No, let's try with
+            # generic objects for placeholder.
             cmp_fever_module: FeverModule = self._ast_analyzer.analyze(
-                module_name, module_obj, getattr(module_obj, "__file__")
+                module_name,
+                module_obj=module_obj,
+                source_path=getattr(module_obj, "__file__"),
             )
             for cmp_func in cmp_fever_module.functions:
                 # NOTE: Now cames the tricky part... How do we match our previously parsed
@@ -158,6 +166,19 @@ class Fever:
                             registry_namespace[k] = v
                         exec(cmp_func.code, registry_namespace)
                 else:
+                    # INFO: The function doesn't exist in the loaded module, but we have
+                    # the source code from AST analysis of the updated source file.
+                    # Instead of reloading the entire module, we can just compile the
+                    # function in the registry namespace, and then hook it into the
+                    # module (done in the call tracker, called by registry.add_function()).
+                    registry_namespace = self.registry._FUNCTION_DEFS[module_name]
+                    module_namespace = vars(module_obj)
+                    for k, v in module_namespace.items():
+                        if k in registry_namespace:
+                            continue
+                        registry_namespace[k] = v
+                    exec(cmp_func.code, registry_namespace)
+                    cmp_func.obj = registry_namespace[cmp_func.name]
                     self.registry.add_function(module_name, cmp_func)
 
             for cmp_class, cmp_methods in cmp_fever_module.methods.items():
@@ -195,6 +216,8 @@ class Fever:
                             exec(cmp_method.code, registry_namespace)
                     else:
                         self.registry.add_method(module_name, cmp_class, cmp_method)
+
+            # TODO: Class definitions!
 
     def rerun(self, entry_point: UUID):
         """

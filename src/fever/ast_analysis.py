@@ -66,6 +66,14 @@ class FeverModule:
     lambdas: List[FeverLambda]
 
 
+class GenericClass:
+    pass
+
+
+def generic_function():
+    pass
+
+
 class ASTAnalyzer(ast.NodeVisitor):
     def __init__(self, console: ConsoleInterface):
         self._console = console
@@ -84,7 +92,11 @@ class ASTAnalyzer(ast.NodeVisitor):
         }
 
     def analyze(
-        self, name: str, obj: object, source_path: Optional[str] = None, show_ast=False
+        self,
+        name: str,
+        module_obj: object,
+        source_path: Optional[str] = None,
+        show_ast=False,
     ) -> FeverModule:
         """
         Analyze the AST of a given object (typically a module, but possibly a class or
@@ -96,8 +108,8 @@ class ASTAnalyzer(ast.NodeVisitor):
             with open(source_path, "r") as f:
                 self._source = f.read()
         else:
-            self._source = inspect.getsource(obj)
-        self._context_stack.append(obj)
+            self._source = inspect.getsource(module_obj)  # type: ignore
+        self._context_stack.append(module_obj)
         self._console.print(
             Panel(
                 Syntax(self._source, lexer="python", theme="dracula"),
@@ -124,7 +136,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self.visit(ast_root)
         return FeverModule(
             root=name,
-            obj=obj,
+            obj=module_obj,
             classes=self._context["classes"],
             functions=self._context["functions"],
             methods=self._context["methods"],
@@ -132,7 +144,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-        class_obj = getattr(self._context_stack[-1], node.name)
+        class_obj = getattr(self._context_stack[-1], node.name, GenericClass())
         code_hash = hash(ast.get_source_segment(self._source, node))
         self._context_stack.append(class_obj)
         self._context["classes"].append(
@@ -162,7 +174,6 @@ class ASTAnalyzer(ast.NodeVisitor):
             f"\\[{prefix}] {node.name}: (args={[arg.arg for arg in node.args.args]})",
             style=f"{color} on black",
         )
-        func_obj = None
         if inspect.isfunction(self._context_stack[-1]):
             # FIXME: Implement nested functions!
             self._console.print(
@@ -170,7 +181,10 @@ class ASTAnalyzer(ast.NodeVisitor):
                 style="red on black",
             )
         else:
-            func_obj = getattr(self._context_stack[-1], node.name)
+            # NOTE: If the function def isn't in the module object, we use a generic and
+            # will later compile the function into the registry, and then hook it into
+            # the module. This requires no module reloading at all :)
+            func_obj = getattr(self._context_stack[-1], node.name, generic_function)
             self._context_stack.append(func_obj)
             code = ast.get_source_segment(self._source, node)
             code_hash = hash(code)
@@ -193,7 +207,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         # TODO: Figure out some trick to map lambdas? I know I was able to find lambdas
         # at crash time, in the stack trace. But we can't do it proactively ahead of
         # crash time due to their anonymous nature.
-        func_obj = None
+        func_obj = {}
         # TODO: Maybe we can't get their code object ahead of time, but we can at least
         # collect their arguments, which we could also track. We need to do this for all
         # callables proably.

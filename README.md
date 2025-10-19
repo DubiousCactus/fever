@@ -34,21 +34,27 @@ place where a function was previously imported and called will automatically cal
 new code. Pretty sweet, right?
 
 
-## How does it differ from Jurigged and others?
+## How does it differ from Jurigged, Lemonade, reloadium and others?
 
-1. Smart caching of function calls for instant hot reloading.
+1. More advanced hot reloading mechanism:
+    a. Instead of compiling the entire module to replace just one function in the
+    registry, we compile that one function individually, saving unnecessary compute
+    which can make a difference for larger modules.
+    b. Handles new function, class, method definitions (even without recompiling the entire
+    module).
+2. Smart caching of function calls for instant hot reloading:
     a. Only reload the code that was changed on disk.
     b. Only re-execute the code that was reloaded (reuse from cache for other
     functions).
     c. Handle loops in a smart way! Aggregate results when possible, save to disk, or
     opt in for a given strategy?
-2. (TODO) Handle multiprocessing for PyTorch dataloaders.
-3. Have a more flexible API that lets us do more things:
+3. (TODO) Handle multiprocessing for PyTorch dataloaders.
+4. Have a more flexible API that lets us do more things:
     a. Define the scope of hot reloading for a given "root callable".
     b. Allow to hang on exception.
     c. Allow saving a whole execution graph on disk, letting us replay for debugging
     step by step and rewinding, and letting us hot-reload on a "playthrough" file.
-4. (TODO) Handling GPU computation???? (no idea what/how/why yet).
+5. (TODO) Handling GPU computation???? (no idea what/how/why yet).
 
 
 ## Roadmap

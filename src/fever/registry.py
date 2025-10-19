@@ -66,13 +66,10 @@ class Registry(ModuleLoadHook):
         raise NotImplementedError
 
     def add_function(self, module_name: str, callable: FeverFunction) -> None:
-        raise NotImplementedError
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
         if isinstance(callable, FeverFunction):
             self._callables[module_name].functions.append(callable)
-        else:
-            raise NotImplementedError
         for hook in self._hooks:
             hook.on_registry_add(self._callables[module_name])
 

@@ -140,7 +140,8 @@ class CallTracker(RegistryAddHook):
             assert isinstance(func.obj, object)
             if func.name not in self._registry._FUNCTION_DEFS[module.root]:
                 self._registry._FUNCTION_DEFS[module.root][func.name] = func.obj
-            setattr(module.obj, func.name, self.track_calls(func.obj))
+            if not hasattr(func.obj, "__wrapped__"):
+                setattr(module.obj, func.name, self.track_calls(func.obj))
             # FIXME: This invalidates the original func.obj right? I mean we won't be
             # using it, so should we update it?
         for class_, methods in module.methods.items():
@@ -163,11 +164,12 @@ class CallTracker(RegistryAddHook):
                     self._registry._CLASS_METHOD_DEFS[module.root][class_.name][
                         method.name
                     ] = method.obj
-                setattr(
-                    class_.obj,
-                    method.name,
-                    self.track_calls(method.obj, fever_class=class_),
-                )
+                if not hasattr(method.obj, "__wrapped__"):
+                    setattr(
+                        class_.obj,
+                        method.name,
+                        self.track_calls(method.obj, fever_class=class_),
+                    )
         for lambda_ in module.lambdas:
             # NOTE: We can't really track lambdas as they are anonymous and we have no
             # way to hook them unless we do some AST rewriting?. But I have been able to

@@ -231,3 +231,46 @@ class TestHotReloading(unittest.TestCase):
         self.fever.reload()
         res = function_d("test")
         self.assertEqual(res, 456)
+
+    def test_new_function(self):
+        import module_a  # noqa: F401
+        import module_c  # noqa: F401
+
+        self.assertIn("module_c", sys.modules)
+        self.assertIn("module_c", self.fever.dependency_tracker.all_imports)
+        res: bool = module_c.other_function("test")
+        self.assertTrue(res)
+
+        fpath = "tests/test_imports/module_c.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """def new_function() -> str:\n    return "I think therefore I am"\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_c, "new_function"))
+        res: bool = module_c.other_function("test")
+        new_res: str = module_c.new_function()
+        self.assertTrue(res)
+        self.assertEqual(new_res, "I think therefore I am")
+
+    def test_new_method(self):
+        import module_d  # noqa: F401
+
+        obj = module_d.MiniTestClass("testy soldier")
+        self.assertEqual(len(obj), 10)
+
+        fpath = "tests/test_imports/module_d.py"
+        with open(fpath, "a") as f:
+            f.write("""    def new_method(self) -> int:\n        return 100\n""")
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(obj, "new_method"))
+        self.assertEqual(len(obj), 10)
+        self.assertEqual(obj.new_method(), 100)
+
+    def test_nested_functions(self):
+        raise NotImplementedError
+        import module_e  # noqa: F401
+
+        res = module_e.nested_functions()
