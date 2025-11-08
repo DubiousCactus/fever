@@ -18,8 +18,6 @@ from typing import Dict, List, Sequence, Tuple
 
 import networkx as nx
 
-from fever.hooks import ModuleLoadHook, NewImportHook
-
 from .utils import ConsoleInterface
 
 
@@ -41,16 +39,15 @@ def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None
 class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
-    def __init__(self, console: ConsoleInterface):
+    def __init__(self, console: ConsoleInterface, fever):
         self.absolute_ignore_dirs = [
             os.path.join(os.getcwd(), d) for d in self.ignore_dirs
         ]
         self._console = console
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
-        self._new_import_hooks: List[NewImportHook] = []
-        self._module_load_hooks: List[ModuleLoadHook] = []
         self._user_modules: Dict[str, str] = {}
+        self._fever = fever
 
     def setup(self, show_skips: bool = False):
         """
@@ -106,8 +103,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            for hook in self._module_load_hooks:
-                hook.on_module_load(module.__name__, code_str)
+            self._fever.on_module_load(module.__name__, code_str)
 
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target=None
@@ -178,67 +174,60 @@ class DependencyTracker(MetaPathFinder, Loader):
     def invalidate_caches(self):
         self._user_modules = {}
 
-    def _import(
-        self, name: str, globals=None, locals=None, fromlist=(), level=0
-    ) -> ModuleType:
-        fromlist = fromlist or ()
-        module = self._original_importer(
-            name, globals=globals, locals=locals, fromlist=fromlist, level=level
-        )
-        path = self._user_modules.get(name, None)
-        if path is None:
-            return module
-
-        caller_module = (
-            (globals["__name__"], globals["__file__"])
-            if globals is not None
-            else (None, None)
-        )
-        path = (
-            self._user_modules.get(caller_module[0], None) if caller_module[0] else None
-        )
-        if path is None:
-            if self._show_skips:
-                self._console.print(
-                    f"Skipping module '{name}' imported from non-user module"
-                    + f"'{caller_module[0]}' defined in '{caller_module[1]}'",
-                    style="red on black",
-                )
-            return module
-
-        composite_name = name if len(fromlist) == 0 else name + "." + ".".join(fromlist)
-        self._console.print(
-            f"Importing '{composite_name}' "
-            + f"from module '{caller_module[0]}' defined in '{caller_module[1]}",
-            style="yellow on black",
-        )
-        if caller_module[0] is not None:
-            # WARN: If the composite name is module.func or module.class we
-            # map it to module! But ideally we dont want to reload the entire
-            # module, so we need a way to specify that func is in namespace module. For
-            # now we load the entire module because it's much simpler and it's not
-            # critical that we only load specific items.
-            # INFO: It turns out that the composite name is not given to the meta
-            # finder! So that means that the import function loads the entire module and
-            # returns only the function of interest anyway, right?
-            parts = composite_name.split(".")
-            for i, el in enumerate(parts):
-                if el in sys.modules:
-                    # Either the element is a function
-                    self._dep_graph.add_edge(caller_module[0], el)
-                elif ".".join(parts[: i + 1]) in sys.modules:
-                    # Or the combination is a submodule
-                    self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
-
-        for hook in self._new_import_hooks:
-            hook.on_new_import(name, module)
-        return module
-
-    def register_new_import_hook(self, hook: NewImportHook):
-        self._new_import_hooks.append(hook)
-
-    def register_module_load_hook(self, hook: ModuleLoadHook):
-        self._module_load_hooks.append(hook)
+    # def _import(
+    #     self, name: str, globals=None, locals=None, fromlist=(), level=0
+    # ) -> ModuleType:
+    #     fromlist = fromlist or ()
+    #     module = self._original_importer(
+    #         name, globals=globals, locals=locals, fromlist=fromlist, level=level
+    #     )
+    #     path = self._user_modules.get(name, None)
+    #     if path is None:
+    #         return module
+    #
+    #     caller_module = (
+    #         (globals["__name__"], globals["__file__"])
+    #         if globals is not None
+    #         else (None, None)
+    #     )
+    #     path = (
+    #         self._user_modules.get(caller_module[0], None) if caller_module[0] else None
+    #     )
+    #     if path is None:
+    #         if self._show_skips:
+    #             self._console.print(
+    #                 f"Skipping module '{name}' imported from non-user module"
+    #                 + f"'{caller_module[0]}' defined in '{caller_module[1]}'",
+    #                 style="red on black",
+    #             )
+    #         return module
+    #
+    #     composite_name = name if len(fromlist) == 0 else name + "." + ".".join(fromlist)
+    #     self._console.print(
+    #         f"Importing '{composite_name}' "
+    #         + f"from module '{caller_module[0]}' defined in '{caller_module[1]}",
+    #         style="yellow on black",
+    #     )
+    #     if caller_module[0] is not None:
+    #         # WARN: If the composite name is module.func or module.class we
+    #         # map it to module! But ideally we dont want to reload the entire
+    #         # module, so we need a way to specify that func is in namespace module. For
+    #         # now we load the entire module because it's much simpler and it's not
+    #         # critical that we only load specific items.
+    #         # INFO: It turns out that the composite name is not given to the meta
+    #         # finder! So that means that the import function loads the entire module and
+    #         # returns only the function of interest anyway, right?
+    #         parts = composite_name.split(".")
+    #         for i, el in enumerate(parts):
+    #             if el in sys.modules:
+    #                 # Either the element is a function
+    #                 self._dep_graph.add_edge(caller_module[0], el)
+    #             elif ".".join(parts[: i + 1]) in sys.modules:
+    #                 # Or the combination is a submodule
+    #                 self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
+    #
+    #     self.fever.on_new_import(name, module)
+    #     return module
 
     def get_dependencies(self, module_name: str) -> List[str]:
         """

@@ -8,7 +8,7 @@
 
 import sys
 from collections import defaultdict
-from typing import Dict, List
+from typing import Dict
 
 from fever.ast_analysis import (
     ASTAnalyzer,
@@ -17,22 +17,25 @@ from fever.ast_analysis import (
     FeverModule,
     generic_function,
 )
-from fever.dependency_tracker import ModuleLoadHook
-from fever.hooks import RegistryAddHook
 from fever.utils import ConsoleInterface
 
 
-class Registry(ModuleLoadHook):
+class Registry:
     # FIXME: Get rid of these and instead place the code pointers in the _callables
     # attribute! Just simplify all these dicts, it's a mess seriously.
     _FUNCTION_DEFS = defaultdict(dict)
     _CLASS_METHOD_DEFS = defaultdict(dict)
 
-    def __init__(self, ast_analyzer: ASTAnalyzer, console_if: ConsoleInterface):
+    def __init__(
+        self,
+        ast_analyzer: ASTAnalyzer,
+        console_if: ConsoleInterface,
+        fever,
+    ) -> None:
         self._console = console_if
         self._ast_analyzer = ast_analyzer
         self._callables: Dict[str, FeverModule] = {}
-        self._hooks: List[RegistryAddHook] = []
+        self.fever = fever
 
     def cleanup(self) -> None:
         # WARN: This is important because the registry definitions are static class
@@ -42,9 +45,6 @@ class Registry(ModuleLoadHook):
         # code base. This would prevent redefining functions.
         self._FUNCTION_DEFS.clear()
         self._CLASS_METHOD_DEFS.clear()
-
-    def register_add_hook(self, hook: RegistryAddHook) -> None:
-        self._hooks.append(hook)
 
     def find_function_by_name(
         self, name: str, module_name: str
@@ -79,8 +79,7 @@ class Registry(ModuleLoadHook):
         )
         if isinstance(callable, FeverFunction):
             self._callables[module_name].functions.append(callable)
-        for hook in self._hooks:
-            hook.on_registry_add(self._callables[module_name])
+        self.fever.on_registry_add(self._callables[module_name])
 
     def add_method(
         self, module_name: str, class_: FeverClass, callable: FeverFunction
@@ -92,8 +91,7 @@ class Registry(ModuleLoadHook):
         )
         if isinstance(callable, FeverFunction):
             self._callables[module_name].methods[class_].append(callable)
-        for hook in self._hooks:
-            hook.on_registry_add(self._callables[module_name])
+        self.fever.on_registry_add(self._callables[module_name])
 
     def on_module_load(self, module_name: str, code_str: str) -> None:
         self._console.print(
@@ -104,5 +102,4 @@ class Registry(ModuleLoadHook):
             module_name, module, show_ast=False
         )
         assert self._callables[module_name].obj == module
-        for hook in self._hooks:
-            hook.on_registry_add(self._callables[module_name])
+        self.fever.on_registry_add(self._callables[module_name])

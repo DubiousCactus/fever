@@ -11,12 +11,11 @@ from typing import Callable, Optional
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverModule, generic_function
-from fever.hooks import RegistryAddHook
 from fever.registry import Registry
 from fever.utils import ConsoleInterface
 
 
-class CallTracker(RegistryAddHook):
+class CallTracker:
     def __init__(self, registry: Registry, console: ConsoleInterface):
         self._console = console
         self._call_graph = nx.DiGraph()

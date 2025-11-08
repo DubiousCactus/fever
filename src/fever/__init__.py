@@ -36,12 +36,14 @@ class Fever:
         self._ast_analyzer = ASTAnalyzer(
             self._console_if if self._verbosity >= 3 else ConsoleInterface(None)
         )
-        self.dependency_tracker = DependencyTracker(
-            self._console_if if self._verbosity >= 2 else ConsoleInterface(None)
-        )
         self.registry = Registry(
             self._ast_analyzer,
             self._console_if if self._verbosity >= 1 else ConsoleInterface(None),
+            self,
+        )
+        self.dependency_tracker = DependencyTracker(
+            self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
+            self,
         )
         self.call_tracker = CallTracker(
             self.registry,
@@ -68,8 +70,6 @@ class Fever:
         will pull the bytecode from the registry.
         """
         self.dependency_tracker.setup(show_skips=self._verbosity == 3)
-        self.dependency_tracker.register_module_load_hook(self.registry)
-        self.registry.register_add_hook(self.call_tracker)
 
     def cleanup(self):
         """
@@ -78,11 +78,20 @@ class Fever:
         self.dependency_tracker.cleanup()
         self.registry.cleanup()
 
+    def on_module_load(self, module_name: str, code_str: str) -> None:
+        self.registry.on_module_load(module_name, code_str)
+
+    def on_new_import(self, module_name: str, module: object) -> None:
+        pass
+
     def plot_dependency_graph(self):
         self.dependency_tracker.plot()
 
     def plot_call_graph(self):
         self.call_tracker.plot()
+
+    def on_registry_add(self, FeverModule):
+        self.call_tracker.on_registry_add(FeverModule)
 
     def reload(self):
         """
