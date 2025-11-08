@@ -175,13 +175,30 @@ class ASTAnalyzer(ast.NodeVisitor):
             style=f"{color} on black",
         )
         if inspect.isfunction(self._context_stack[-1]):
-            # FIXME: Implement nested functions!
-            self._console.print(
-                "[WARNING] Nested functions are not supported yet. Skipping nested function.",
-                style="red on black",
+            # INFO: Look for the context object that is not a function by going up the context
+            # stack until we left all nested functions. Then, take the one object just
+            # below that level. Because modules don't contain nested function objects,
+            # as they are directly compiled in the code object that contains them.
+            # Basically we can't handle nested functions individually :( But I may find
+            # a solution later.
+            func_obj = generic_function
+            for i in range(1, len(self._context_stack) + 1):
+                context = self._context_stack[-i]
+                if inspect.isfunction(context):
+                    continue
+            code = ast.get_source_segment(self._source, node)
+            code_hash = hash(code)
+            # FIXME: We need to introduce something here to handle the absence of a func
+            # object! Right now this is a generic, but we will want to hold the parent
+            # func object to reload. We might want to use a linked list of
+            # FeverFunctions to handle nested functions.
+            fever_obj = FeverFunction(
+                node.name, uuid1(), node, [], func_obj, code_hash, code=code
             )
+            self._context_stack.append(func_obj)
         else:
-            # NOTE: If the function def isn't in the module object, we use a generic and
+            # NOTE: If the function def isn't in the module object (ie this is a new
+            # definition since the first module import), we use a generic and
             # will later compile the function into the registry, and then hook it into
             # the module. This requires no module reloading at all :)
             func_obj = getattr(self._context_stack[-1], node.name, generic_function)
