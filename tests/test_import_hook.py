@@ -15,6 +15,7 @@ from fever import Fever
 # ... and so on
 class TestImportHook(unittest.TestCase):
     _test_modules = [
+        "main",
         "module_a",
         "module_b",
         "module_c",
@@ -61,6 +62,7 @@ class TestImportHook(unittest.TestCase):
         self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
 
     def test_not_user_fuzzy(self):
+        self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
         import requests
 
         word_site = "https://www.mit.edu/~ecprice/wordlist.10000"
@@ -69,9 +71,9 @@ class TestImportHook(unittest.TestCase):
         forbidden_words = ["dist", "src"]
 
         for word in response.content.splitlines():
+            word = word.strip().decode("utf-8")
             if word in self._test_modules:
                 continue
-            word = word.strip().decode("utf-8")
             if word in forbidden_words:
                 continue
             try:
@@ -81,7 +83,11 @@ class TestImportHook(unittest.TestCase):
             except SyntaxError:
                 pass
 
-        self.assertEqual(len(self.fever.dependency_tracker.all_imports), 0)
+        self.assertEqual(
+            len(self.fever.dependency_tracker.all_imports),
+            0,
+            f"Imported modules: {self.fever.dependency_tracker.all_imports}",
+        )
 
     def test_simple(self):
         import module_d  # noqa: F401
