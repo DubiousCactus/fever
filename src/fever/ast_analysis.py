@@ -175,29 +175,11 @@ class ASTAnalyzer(ast.NodeVisitor):
             style=f"{color} on black",
         )
         if inspect.isfunction(self._context_stack[-1]):
-            # INFO: Look for the context object that is not a function by going up the context
-            # stack until we left all nested functions. Then, take the one object just
-            # below that level. Because modules don't contain nested function objects,
-            # as they are directly compiled in the code object that contains them.
-            # Basically we can't handle nested functions individually :( But I may find
-            # a solution later.
-            func_obj = generic_function
-            level_0_obj = None
-            for i in range(1, len(self._context_stack) + 1):
-                context = self._context_stack[-i]
-                if inspect.isfunction(context):
-                    continue
-                level_0_obj = context
-            code = ast.get_source_segment(self._source, node)
-            code_hash = hash(code)
-            # FIXME: We need to introduce something here to handle the absence of a func
-            # object! Right now this is a generic, but we will want to hold the parent
-            # func object to reload. We might want to use a linked list of
-            # FeverFunctions to handle nested functions.
-            fever_obj = FeverFunction(
-                node.name, uuid1(), node, [], level_0_obj, code_hash, code=code
-            )
-            self._context_stack.append(func_obj)
+            # NOTE: Nested functions aren't defined on their own, they are part of their
+            # parent's code object. So there's no need to track them, since they are
+            # local and cannot be called from outside the parent function anyway. For
+            # this reason, we just ignore them.
+            self._context_stack.append(generic_function)
         else:
             # NOTE: If the function def isn't in the module object (ie this is a new
             # definition since the first module import), we use a generic and
