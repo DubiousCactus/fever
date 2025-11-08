@@ -269,8 +269,32 @@ class TestHotReloading(unittest.TestCase):
         self.assertEqual(len(obj), 10)
         self.assertEqual(obj.new_method(), 100)
 
-    def test_nested_functions(self):
-        raise NotImplementedError
-        import module_e  # noqa: F401
+    def test_nested_functions_level_one(self):
+        from submodules.module_e import nested_functions  # noqa: F401
 
-        res = module_e.nested_functions()
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123"))
+        fpath = "tests/test_imports/submodules/module_e.py"
+        replace_on_disk(
+            fpath,
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls modified nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+        )
+        self.fever.reload()
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls modified nested_b: 123"))
+
+    def test_nested_functions_level_two(self):
+        from submodules.module_e import nested_functions  # noqa: F401
+
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123"))
+        fpath = "tests/test_imports/submodules/module_e.py"
+        replace_on_disk(
+            fpath,
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123456\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+        )
+        self.fever.reload()
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123456"))

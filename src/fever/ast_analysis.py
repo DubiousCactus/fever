@@ -182,10 +182,12 @@ class ASTAnalyzer(ast.NodeVisitor):
             # Basically we can't handle nested functions individually :( But I may find
             # a solution later.
             func_obj = generic_function
+            level_0_obj = None
             for i in range(1, len(self._context_stack) + 1):
                 context = self._context_stack[-i]
                 if inspect.isfunction(context):
                     continue
+                level_0_obj = context
             code = ast.get_source_segment(self._source, node)
             code_hash = hash(code)
             # FIXME: We need to introduce something here to handle the absence of a func
@@ -193,7 +195,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             # func object to reload. We might want to use a linked list of
             # FeverFunctions to handle nested functions.
             fever_obj = FeverFunction(
-                node.name, uuid1(), node, [], func_obj, code_hash, code=code
+                node.name, uuid1(), node, [], level_0_obj, code_hash, code=code
             )
             self._context_stack.append(func_obj)
         else:
