@@ -92,7 +92,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             "methods": defaultdict(list),
         }
 
-    def analyze(
+    def make_module_inventory(
         self,
         name: str,
         module_obj: object,

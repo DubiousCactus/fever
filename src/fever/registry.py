@@ -100,6 +100,8 @@ class Registry:
         self._add_method_code_pointer(module_name, class_, method)
 
     def _add_class_code_pointer(self, module_name: str, class_: FeverClass) -> None:
+        if class_.name not in self._CLASS_METHOD_PTRS[module_name]:
+            self._CLASS_METHOD_PTRS[module_name][class_.name] = {}
         if class_.name not in self._CLASS_PTRS[module_name]:
             self._CLASS_PTRS[module_name][class_.name] = class_.obj
 

@@ -18,7 +18,7 @@ from fever.registry import Registry
 
 from .call_tracker import CallTracker
 from .dependency_tracker import DependencyTracker
-from .utils import ConsoleInterface
+from .utils import ConsoleInterface, compile_code_in_namespace
 
 
 def parse_verbosity() -> int:
@@ -90,7 +90,7 @@ class FeverCore:
             self._console_if.print(
                 f"Analyzing AST for module '{module_name}'", style="blue on black"
             )
-            fever_module = self._ast_analyzer.analyze(
+            fever_module = self._ast_analyzer.make_module_inventory(
                 module_name, module, show_ast=False
             )
             assert fever_module.obj == module
@@ -170,157 +170,110 @@ class FeverCore:
 
         For each tracked module:
           1. Reload from disk.
-          2. Run AST analysis to extract callables (functions and methods).
+          2. Run AST analysis to make module inventory (functions, classes, methods).
           3. Compare hashes of callables with those in the registry.
           4. For each hash mismatch:
               a. Replace the function bytecode in the registry.
           5. For each new callable not found in registry, add it.
         """
-        console = self._console_if if self._verbosity >= 1 else ConsoleInterface(None)
         for module_name in self.dependency_tracker.all_imports:
-            console.print(f"Inspecting module '{module_name}'", style="purple on black")
+            self._console_if.print(
+                f"Inspecting module '{module_name}'", style="purple on black"
+            )
             if module_name not in sys.modules:
-                console.print(
+                self._console_if.print(
                     f"Module '{module_name}' not found in sys.modules, skipping.",
                     style="red on black",
                 )
                 continue
             module_obj: ModuleType = sys.modules[module_name]
-            # NOTE: set module_obj = None to re-execute the module code. This way we can
-            # handle new definitions (new functions/classes) that were not present before.
-            # FIXME: Yeah for now I'm returning an empty code object for new functions,
-            # which should work fine. But it will break for new classes because we won't
-            # be able to find class methods. Although do we need to? No, let's try with
-            # generic objects for placeholder.
-            cmp_fever_module: FeverModule = self._ast_analyzer.analyze(
+            module_namespace = vars(module_obj)
+            cmp_fever_module: FeverModule = self._ast_analyzer.make_module_inventory(
                 module_name,
                 module_obj=module_obj,
                 source_path=getattr(module_obj, "__file__"),
             )
+            # WARN: The new code object returned by AST analysis is stale because we get
+            # it from the original module. Instead of reloading the entire module, we
+            # recompile the callable.
+            # INFO: We compile the new function code into the registry namespace, where
+            # it should already be defined since the original function is placed there
+            # by our call wrapper. Subsequent calls to the function will point to the
+            # updated code in the reigstry. It's beautiful, there is no need to refresh
+            # imports or references.
+            func_registry_namespace = self.registry._FUNCTION_PTRS[module_name]
             for cmp_func in cmp_fever_module.functions:
-                # NOTE: Now cames the tricky part... How do we match our previously parsed
-                # functions to the new parsed functions?
-                # Option 1: by hash(name + scope + args)
-                # Option 2: by other heuristics with a diff algorithm?
-                # We'll use option 1 for now.
-                if fever_callable := self.registry.find_function_by_name(
-                    cmp_func.name, module_name
-                ):
-                    if fever_callable.hash != cmp_func.hash:
-                        console.print(
-                            f"Hash mismatch for function '{fever_callable.name}': hot reloading!",
-                            style="green on black",
-                        )
-                        # WARN: cmp_func.obj is not valid! Because we get it from
-                        # the original module, and it was not reloaded. So either we
-                        # reload the module, but I don't like it because it replaces
-                        # sys.modules and reloads the entire thing, or we exec
-                        # function code only!
-                        # INFO: Compile the new function code into the registry
-                        # namespace, where it should already be defined since the
-                        # original function is placed there by our call wrapper. For
-                        # subsequent calls to the function, from anywhere, the new code
-                        # will be used automatically. It's beautiful, there is no need
-                        # to refresh imports or references.
-                        # FIXME: This assert is broken. We need the hierarchy of the
-                        # function definition. It will only work for level 0 (module).
-                        # assert hasattr(
-                        #     module_namespace[fever_callable.name], "__wrapped__"
-                        # ), (
-                        #     f"Function '{fever_callable.name}' was never wrapped "
-                        #     + "and so is not in the registry. "
-                        #     + "This should not happen, please make a bug report."
-                        # )
-                        # NOTE: Here we need to put the module namespace into
-                        # the registry namespace so that exec() can access the globals
-                        # during execution. This seems like the most robust solution
-                        # right now, but I will think about it again and implement loads
-                        # of tests.
-                        registry_namespace = self.registry._FUNCTION_PTRS[module_name]
-                        module_namespace = vars(module_obj)
-                        for k, v in module_namespace.items():
-                            if k in registry_namespace:
-                                continue
-                            registry_namespace[k] = v
-                        exec(cmp_func.code, registry_namespace)
-                else:
-                    # INFO: The function doesn't exist in the loaded module, but we have
-                    # the source code from AST analysis of the updated source file.
-                    # Instead of reloading the entire module, we can just compile the
-                    # function in the registry namespace, and then hook it into the
-                    # module (done in the call tracker, called by registry.add_function()).
-                    registry_namespace = self.registry._FUNCTION_PTRS[module_name]
-                    module_namespace = vars(module_obj)
-                    for k, v in module_namespace.items():
-                        if k in registry_namespace:
-                            continue
-                        registry_namespace[k] = v
-                    exec(cmp_func.code, registry_namespace)
-                    cmp_func.obj = registry_namespace[cmp_func.name]
+                if (
+                    fever_callable := self.registry.find_function_by_name(
+                        cmp_func.name, module_name
+                    )
+                ) and fever_callable.hash != cmp_func.hash:
+                    self._console_if.print(
+                        f"Hash mismatch for function '{fever_callable.name}': hot reloading!",
+                        style="green on black",
+                    )
+                    compile_code_in_namespace(
+                        cmp_func.code,
+                        cmp_func.name,
+                        module_namespace,
+                        func_registry_namespace,
+                    )
+                elif not fever_callable:
+                    # INFO: The function doesn't exist in the loaded module so we
+                    # compile it and track it.
+                    compile_code_in_namespace(
+                        cmp_func.code,
+                        cmp_func.name,
+                        module_namespace,
+                        func_registry_namespace,
+                    )
+                    cmp_func.obj = func_registry_namespace[cmp_func.name]
                     self.registry.add_function(module_name, cmp_func)
                     self._track_function(cmp_func, cmp_fever_module)
 
             for cmp_class, cmp_methods in cmp_fever_module.methods.items():
                 for cmp_method in cmp_methods:
-                    if fever_callable := self.registry.find_method_by_name(
-                        cmp_method.name, cmp_class.name, module_name
-                    ):
-                        if fever_callable.hash != cmp_method.hash:
-                            console.print(
-                                f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
-                                style="green on black",
-                            )
-                            # FIXME: This assert is broken. We need the hierarchy of the
-                            # method definition. It will only work for level 1 (class in
-                            # module).
-                            # assert hasattr(
-                            #     getattr(
-                            #         module_namespace[cmp_class.name],
-                            #         fever_callable.name,
-                            #     ),
-                            #     "__wrapped__",
-                            # ), (
-                            #     f"Function '{fever_callable.name}' was never wrapped "
-                            #     + "and so is not in the registry. "
-                            #     + "This should not happen, please make a bug report."
-                            # )
-                            module_namespace = vars(module_obj)
-                            registry_namespace = self.registry._CLASS_METHOD_PTRS[
+                    if (
+                        fever_callable := self.registry.find_method_by_name(
+                            cmp_method.name, cmp_class.name, module_name
+                        )
+                    ) and fever_callable.hash != cmp_method.hash:
+                        self._console_if.print(
+                            f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
+                            style="green on black",
+                        )
+                        compile_code_in_namespace(
+                            cmp_method.code,
+                            cmp_method.name,
+                            module_namespace,
+                            registry_namespace=self.registry._CLASS_METHOD_PTRS[
                                 module_name
-                            ][cmp_class.name]
-                            for k, v in module_namespace.items():
-                                if k in registry_namespace:
-                                    continue
-                                registry_namespace[k] = v
-                            exec(cmp_method.code, registry_namespace)
-                    else:
-                        module_namespace = vars(module_obj)
-                        if cmp_class.name not in self.registry._CLASS_PTRS[module_name]:
-                            registry_namespace = self.registry._CLASS_PTRS[module_name]
-                            for k, v in module_namespace.items():
-                                if k in registry_namespace:
-                                    continue
-                                registry_namespace[k] = v
-                            exec(cmp_class.code, registry_namespace)
-                            cmp_class.obj = registry_namespace[cmp_class.name]
-                            self.registry._CLASS_METHOD_PTRS[module_name][
-                                cmp_class.name
-                            ] = {}
+                            ][cmp_class.name],
+                        )
+                    elif not fever_callable:
+                        class_registry_namespace = self.registry._CLASS_PTRS[
+                            module_name
+                        ]
+                        if cmp_class.name not in class_registry_namespace:
+                            compile_code_in_namespace(
+                                cmp_class.code,
+                                cmp_class.name,
+                                module_namespace,
+                                class_registry_namespace,
+                            )
+                            cmp_class.obj = class_registry_namespace[cmp_class.name]
                             self.registry.add_class(module_name, cmp_class)
                             self._track_class(cmp_class, cmp_fever_module)
-                        registry_namespace = self.registry._CLASS_METHOD_PTRS[
+                        method_registry_namespace = self.registry._CLASS_METHOD_PTRS[
                             module_name
                         ][cmp_class.name]
-                        # FIXME: This is such a mess. Can we execute the code in an
-                        # isolated namespace, and then move the compiled function *only*
-                        # to the target namespace? Or would that break pointers in the
-                        # byte code?
-                        for k, v in module_namespace.items():
-                            if k in registry_namespace:
-                                continue
-                            registry_namespace[k] = v
-                        exec(cmp_method.code, registry_namespace)
-                        cmp_method.obj = registry_namespace[cmp_method.name]
+                        compile_code_in_namespace(
+                            cmp_method.code,
+                            cmp_method.name,
+                            module_namespace,
+                            method_registry_namespace,
+                        )
+                        cmp_method.obj = method_registry_namespace[cmp_method.name]
                         if class_ := self.registry.find_class_by_name(
                             cmp_class.name, module_name
                         ):
@@ -328,7 +281,8 @@ class FeverCore:
                             self._track_method(cmp_method, class_, cmp_fever_module)
                         else:
                             raise RuntimeError(
-                                f"Class '{cmp_class.name}' not found in registry "
+                                f"Class '{cmp_class.name}' not found in registry. "
+                                + "This should never happen, please make a bug report."
                             )
 
     def rerun(self, entry_point: UUID):
