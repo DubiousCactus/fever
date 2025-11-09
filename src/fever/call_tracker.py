@@ -112,7 +112,7 @@ class CallTracker:
             # the registry directly :)
             if callee_instance is None:
                 # function call
-                func_entry = self._registry._FUNCTION_DEFS[module_name][func_name]
+                func_entry = self._registry._FUNCTION_PTRS[module_name][func_name]
                 # TODO: We should allow wrapped callables, but we should make sure that
                 # the wrapper isn't this current one!
                 assert not hasattr(func_entry, "__wrapped__"), (
@@ -122,7 +122,7 @@ class CallTracker:
             else:
                 # Method call
                 assert fever_class is not None
-                method_entry = self._registry._CLASS_METHOD_DEFS[module_name][
+                method_entry = self._registry._CLASS_METHOD_PTRS[module_name][
                     fever_class.name
                 ][func_name]
                 assert not hasattr(method_entry, "__wrapped__"), (

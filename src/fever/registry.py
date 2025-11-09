@@ -6,38 +6,27 @@
 # Distributed under terms of the MIT license.
 
 
-import sys
 from collections import defaultdict
 from typing import Dict
 
 from fever.ast_analysis import (
-    ASTAnalyzer,
     FeverClass,
     FeverFunction,
     FeverModule,
     GenericClass,
     generic_function,
 )
-from fever.utils import ConsoleInterface
 
 
 class Registry:
-    # FIXME: Get rid of these and instead place the code pointers in the _callables
-    # attribute! Just simplify all these dicts, it's a mess seriously.
-    _FUNCTION_DEFS = defaultdict(dict)
-    _CLASS_METHOD_DEFS = defaultdict(dict)
-    _CLASS_DEFS = defaultdict(dict)
+    _FUNCTION_PTRS = defaultdict(dict)
+    _CLASS_METHOD_PTRS = defaultdict(dict)
+    _CLASS_PTRS = defaultdict(dict)
 
     def __init__(
         self,
-        ast_analyzer: ASTAnalyzer,
-        console_if: ConsoleInterface,
-        fever,
     ) -> None:
-        self._console = console_if
-        self._ast_analyzer = ast_analyzer
-        self._callables: Dict[str, FeverModule] = {}
-        self.fever = fever
+        self._inventory: Dict[str, FeverModule] = {}
 
     def cleanup(self) -> None:
         # WARN: This is important because the registry definitions are static class
@@ -45,14 +34,14 @@ class Registry:
         # move them to instance attributes, but for now I like to think that it's safer
         # like that in case we ever have multiple fever instances running in the same
         # code base. This would prevent redefining functions.
-        self._FUNCTION_DEFS.clear()
-        self._CLASS_METHOD_DEFS.clear()
-        self._CLASS_DEFS.clear()
+        self._FUNCTION_PTRS.clear()
+        self._CLASS_METHOD_PTRS.clear()
+        self._CLASS_PTRS.clear()
 
     def find_function_by_name(
         self, name: str, module_name: str
     ) -> FeverFunction | None:
-        for func in self._callables[module_name].functions:
+        for func in self._inventory[module_name].functions:
             if func.name == name:
                 return func
         return None
@@ -60,7 +49,7 @@ class Registry:
     def find_method_by_name(
         self, name: str, class_name: str, module_name: str
     ) -> FeverFunction | None:
-        for cls_, methods in self._callables[module_name].methods.items():
+        for cls_, methods in self._inventory[module_name].methods.items():
             if cls_.name != class_name:
                 continue
             for method in methods:
@@ -69,51 +58,68 @@ class Registry:
         return None
 
     def find_class_by_name(self, name: str, module_name: str) -> FeverClass | None:
-        for cls_ in self._callables[module_name].classes:
+        for cls_ in self._inventory[module_name].classes:
             if cls_.name == name:
                 return cls_
         return None
 
-    def add_function(self, module_name: str, callable: FeverFunction) -> None:
-        if module_name not in self._callables:
-            raise KeyError(f"'{module_name}' is not a tracked module")
-        assert callable is not generic_function, (
+    def _add_function_code_pointer(self, module_name: str, func: FeverFunction) -> None:
+        if func.name not in self._FUNCTION_PTRS[module_name]:
+            self._FUNCTION_PTRS[module_name][func.name] = func.obj
+
+    def add_function(self, module_name: str, func: FeverFunction) -> None:
+        assert func is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
-        assert isinstance(callable, FeverFunction), (
+        assert isinstance(func, FeverFunction), (
             "add_function(): 'callable' must be a FeverFunction"
         )
-        self._callables[module_name].functions.append(callable)
+        self._inventory[module_name].functions.append(func)
+        self._add_function_code_pointer(module_name, func)
+
+    def _add_method_code_pointer(
+        self, module_name: str, class_: FeverClass, method: FeverFunction
+    ) -> None:
+        if class_.name not in self._CLASS_METHOD_PTRS[module_name]:
+            self._CLASS_METHOD_PTRS[module_name][class_.name] = {
+                method.name: method.obj
+            }
+        elif method.name not in self._CLASS_METHOD_PTRS[module_name][class_.name]:
+            self._CLASS_METHOD_PTRS[module_name][class_.name][method.name] = method.obj
 
     def add_method(
-        self, module_name: str, class_: FeverClass, callable: FeverFunction
+        self, module_name: str, class_: FeverClass, method: FeverFunction
     ) -> None:
-        if module_name not in self._callables:
-            raise KeyError(f"'{module_name}' is not a tracked module")
-        assert callable is not generic_function, (
+        assert method is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
-        assert isinstance(callable, FeverFunction), (
+        assert isinstance(method, FeverFunction), (
             "add_function(): 'callable' must be a FeverFunction"
         )
-        self._callables[module_name].methods[class_].append(callable)
+        self._inventory[module_name].methods[class_].append(method)
+        self._add_method_code_pointer(module_name, class_, method)
+
+    def _add_class_code_pointer(self, module_name: str, class_: FeverClass) -> None:
+        if class_.name not in self._CLASS_PTRS[module_name]:
+            self._CLASS_PTRS[module_name][class_.name] = class_.obj
 
     def add_class(self, module_name: str, class_: FeverClass) -> None:
-        if module_name not in self._callables:
-            raise KeyError(f"'{module_name}' is not a tracked module")
         assert class_ is not GenericClass, "add_class(): Cannot register GenericClass"
         assert isinstance(class_, FeverClass), (
             "add_class(): 'class_' must be a FeverClass"
         )
-        self._callables[module_name].classes.append(class_)
+        self._inventory[module_name].classes.append(class_)
+        self._add_class_code_pointer(module_name, class_)
 
-    def make_inventory(self, module_name: str) -> FeverModule:
-        self._console.print(
-            f"Analyzing AST for module '{module_name}'", style="blue on black"
-        )
-        module = sys.modules[module_name]
-        self._callables[module_name] = self._ast_analyzer.analyze(
-            module_name, module, show_ast=False
-        )
-        assert self._callables[module_name].obj == module
-        return self._callables[module_name]
+    def add_module(self, module_name: str, module: FeverModule) -> None:
+        """
+        Adds a fever module to the registry inventory, along with its callable code
+        pointers.
+        """
+        self._inventory[module_name] = module
+        for func in module.functions:
+            self._add_function_code_pointer(module_name, func)
+        for cls_ in module.classes:
+            self._add_class_code_pointer(module_name, cls_)
+            for method in module.methods[cls_]:
+                self._add_method_code_pointer(module_name, cls_, method)

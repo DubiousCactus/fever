@@ -53,10 +53,9 @@ class DependencyTracker(MetaPathFinder, Loader):
         """
         Setup the import hook to keep track of user module imports.
         """
-        # self._original_importer = builtins.__import__
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
-        caller_code_obj = sys._getframe(2).f_code  # 2 bc 1 is Fever.__init__
+        caller_code_obj = sys._getframe(2).f_code  # Level 2 because 1 is Fever.__init__
         self._console.print(
             "Calling fever dep tracker from",
             inspect.getmodule(caller_code_obj).__name__,
@@ -67,7 +66,10 @@ class DependencyTracker(MetaPathFinder, Loader):
             inspect.getfile(caller_code_obj)
         )
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
+        # self._original_importer = builtins.__import__
         # builtins.__import__ = self._import
+
+        # Insert our finder/loader as top priority:
         sys.meta_path.insert(0, self)
 
     def cleanup(self):
