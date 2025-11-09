@@ -29,6 +29,7 @@ class FeverClass:
     ast_node: ast.ClassDef
     obj: object
     hash: int
+    code: Optional[str] = None
 
     def __hash__(self) -> int:
         return self.hash
@@ -144,8 +145,9 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
-        class_obj = getattr(self._context_stack[-1], node.name, GenericClass())
-        code_hash = hash(ast.get_source_segment(self._source, node))
+        class_obj = getattr(self._context_stack[-1], node.name, GenericClass)
+        code = ast.get_source_segment(self._source, node)
+        code_hash = hash(code)
         self._context_stack.append(class_obj)
         self._context["classes"].append(
             FeverClass(
@@ -154,6 +156,7 @@ class ASTAnalyzer(ast.NodeVisitor):
                 node,
                 class_obj,
                 code_hash,
+                code=code,
             )
         )
         self._console.print(Pretty(node))

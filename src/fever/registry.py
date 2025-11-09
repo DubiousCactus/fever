@@ -15,6 +15,7 @@ from fever.ast_analysis import (
     FeverClass,
     FeverFunction,
     FeverModule,
+    GenericClass,
     generic_function,
 )
 from fever.utils import ConsoleInterface
@@ -25,6 +26,7 @@ class Registry:
     # attribute! Just simplify all these dicts, it's a mess seriously.
     _FUNCTION_DEFS = defaultdict(dict)
     _CLASS_METHOD_DEFS = defaultdict(dict)
+    _CLASS_DEFS = defaultdict(dict)
 
     def __init__(
         self,
@@ -45,6 +47,7 @@ class Registry:
         # code base. This would prevent redefining functions.
         self._FUNCTION_DEFS.clear()
         self._CLASS_METHOD_DEFS.clear()
+        self._CLASS_DEFS.clear()
 
     def find_function_by_name(
         self, name: str, module_name: str
@@ -74,7 +77,7 @@ class Registry:
     def add_function(self, module_name: str, callable: FeverFunction) -> None:
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
-        assert callable != generic_function, (
+        assert callable is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
         if isinstance(callable, FeverFunction):
@@ -86,11 +89,19 @@ class Registry:
     ) -> None:
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
-        assert callable != generic_function, (
+        assert callable is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
         if isinstance(callable, FeverFunction):
             self._callables[module_name].methods[class_].append(callable)
+        self.fever.on_registry_add(self._callables[module_name])
+
+    def add_class(self, module_name: str, class_: FeverClass) -> None:
+        if module_name not in self._callables:
+            raise KeyError(f"'{module_name}' is not a tracked module")
+        assert class_ is not GenericClass, "add_class(): Cannot register GenericClass"
+        if isinstance(class_, FeverClass):
+            self._callables[module_name].classes.append(class_)
         self.fever.on_registry_add(self._callables[module_name])
 
     def on_module_load(self, module_name: str, code_str: str) -> None:

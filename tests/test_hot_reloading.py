@@ -104,6 +104,36 @@ class TestHotReloading(unittest.TestCase):
         self.assertEqual(res_unchanged, 321)
         self.assertEqual(res_changed, 456)
 
+    def test_nested_functions_level_one(self):
+        from submodules.module_e import nested_functions  # noqa: F401
+
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123"))
+        fpath = "tests/test_imports/submodules/module_e.py"
+        replace_on_disk(
+            fpath,
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls modified nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+        )
+        self.fever.reload()
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls modified nested_b: 123"))
+
+    def test_nested_functions_level_two(self):
+        from submodules.module_e import nested_functions  # noqa: F401
+
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123"))
+        fpath = "tests/test_imports/submodules/module_e.py"
+        replace_on_disk(
+            fpath,
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123456\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
+        )
+        self.fever.reload()
+        res = nested_functions()
+        self.assertEqual(res, len("nested_a calls nested_b: 123456"))
+
     def test_simple_method(self):
         import module_d  # noqa: F401
 
@@ -269,32 +299,26 @@ class TestHotReloading(unittest.TestCase):
         self.assertEqual(len(obj), 10)
         self.assertEqual(obj.new_method(), 100)
 
-    def test_nested_functions_level_one(self):
-        from submodules.module_e import nested_functions  # noqa: F401
+    def test_new_class(self):
+        import module_a  # noqa: F401
+        import module_c  # noqa: F401
 
-        res = nested_functions()
-        self.assertEqual(res, len("nested_a calls nested_b: 123"))
-        fpath = "tests/test_imports/submodules/module_e.py"
-        replace_on_disk(
-            fpath,
-            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
-            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls modified nested_b: {nested_b()}"\n\n    return len(nested_a())""",
-        )
+        self.assertIn("module_c", sys.modules)
+        self.assertIn("module_c", self.fever.dependency_tracker.all_imports)
+        res: bool = module_c.other_function("test")
+        self.assertTrue(res)
+
+        fpath = "tests/test_imports/module_c.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nclass TestClass:\n    def call_me_baby(self):\n        return "Hey, I just met you!"\n"""
+            )
+            f.flush()
         self.fever.reload()
-        res = nested_functions()
-        self.assertEqual(res, len("nested_a calls modified nested_b: 123"))
-
-    def test_nested_functions_level_two(self):
-        from submodules.module_e import nested_functions  # noqa: F401
-
-        res = nested_functions()
-        self.assertEqual(res, len("nested_a calls nested_b: 123"))
-        fpath = "tests/test_imports/submodules/module_e.py"
-        replace_on_disk(
-            fpath,
-            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
-            """def nested_functions() -> int:\n    def nested_a() -> str:\n        def nested_b() -> int:\n            return 123456\n\n        return f"nested_a calls nested_b: {nested_b()}"\n\n    return len(nested_a())""",
-        )
-        self.fever.reload()
-        res = nested_functions()
-        self.assertEqual(res, len("nested_a calls nested_b: 123456"))
+        print(dir(module_c))
+        self.assertTrue(hasattr(module_c, "TestClass"))
+        self.assertFalse(hasattr(module_c, "call_me_baby"))
+        res: bool = module_c.other_function("test")
+        new_res: str = module_c.TestClass().call_me_baby()
+        self.assertTrue(res)
+        self.assertEqual(new_res, "Hey, I just met you!")

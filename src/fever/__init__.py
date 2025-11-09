@@ -224,8 +224,19 @@ class Fever:
                                 registry_namespace[k] = v
                             exec(cmp_method.code, registry_namespace)
                     else:
-                        # breakpoint()
                         module_namespace = vars(module_obj)
+                        if cmp_class.name not in self.registry._CLASS_DEFS[module_name]:
+                            registry_namespace = self.registry._CLASS_DEFS[module_name]
+                            for k, v in module_namespace.items():
+                                if k in registry_namespace:
+                                    continue
+                                registry_namespace[k] = v
+                            exec(cmp_class.code, registry_namespace)
+                            cmp_class.obj = registry_namespace[cmp_class.name]
+                            self.registry._CLASS_METHOD_DEFS[module_name][
+                                cmp_class.name
+                            ] = {}
+                            self.registry.add_class(module_name, cmp_class)
                         registry_namespace = self.registry._CLASS_METHOD_DEFS[
                             module_name
                         ][cmp_class.name]

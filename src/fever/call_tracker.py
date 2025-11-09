@@ -134,18 +134,18 @@ class CallTracker:
         return wrapper
 
     def on_registry_add(self, module: FeverModule) -> None:
+        # TODO: Move to fever core?
         # FIXME: Currently, we re-wrap every callable whenever this method is called!
         # This is wrong, because we check whether func.obj is wrapped, but func.obj is
         # never updated since we take the wrapper and replace the pointer in the module
         # object. ie func.obj is always the original object! We need to re-implement the
         # wrapping logic and simplify it. But let's first pass all tests.
         for func in module.functions:
-            # FIXME: Nested functions can't be asserted this way
             # assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
             #     f"Function {func.name} was already wrapped! This is not supposed to happen."
             # )
             assert isinstance(func.obj, object)
-            assert func.obj != generic_function, (
+            assert func.obj is not generic_function, (
                 f"on_registry_add(): function {func.name} is the generic function!"
             )
             if func.name not in self._registry._FUNCTION_DEFS[module.root]:
@@ -154,6 +154,15 @@ class CallTracker:
                 setattr(module.obj, func.name, self.track_calls(func.obj))
             # FIXME: This invalidates the original func.obj right? I mean we won't be
             # using it, so should we update it?
+
+        for class_ in module.classes:
+            assert isinstance(class_, object)
+            if not hasattr(module.obj, class_.name):
+                setattr(module.obj, class_.name, class_.obj)
+            if class_.name not in self._registry._CLASS_DEFS[module.root]:
+                self._registry._CLASS_DEFS[module.root][class_.name] = class_.obj
+                setattr(module.obj, class_.name, class_.obj)
+
         for class_, methods in module.methods.items():
             assert isinstance(class_, object)
             for method in methods:
@@ -163,7 +172,7 @@ class CallTracker:
                 #     f"Function {method.name} was already wrapped! This is not supposed to happen."
                 # )
                 assert isinstance(method.obj, object)
-                assert method.obj != generic_function, (
+                assert method.obj is not generic_function, (
                     f"on_registry_add(): method {method.name} is the generic function!"
                 )
                 if class_.name not in self._registry._CLASS_METHOD_DEFS[module.root]:
