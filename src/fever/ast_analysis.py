@@ -54,7 +54,7 @@ class FeverLambda:
     uid: UUID
     ast_node: ast.Lambda
     args: List[Any]
-    obj: Optional[object] = None  # FIXME: I don't know how to handle this yet
+    obj: Optional[object] = None
 
 
 @dataclass
