@@ -14,7 +14,7 @@ from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
 from types import ModuleType
-from typing import Dict, List, Sequence, Tuple
+from typing import Callable, Dict, List, Sequence, Tuple
 
 import networkx as nx
 
@@ -39,7 +39,7 @@ def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None
 class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
-    def __init__(self, console: ConsoleInterface, fever):
+    def __init__(self, console: ConsoleInterface, on_module_load_callback: Callable):
         self.absolute_ignore_dirs = [
             os.path.join(os.getcwd(), d) for d in self.ignore_dirs
         ]
@@ -47,27 +47,34 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
         self._user_modules: Dict[str, str] = {}
-        self._fever = fever
+        self.on_module_load_callback = on_module_load_callback
 
     def setup(self, show_skips: bool = False):
         """
         Setup the import hook to keep track of user module imports.
         """
-        # self._original_importer = builtins.__import__
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
-        caller_code_obj = sys._getframe(2).f_code  # 2 bc 1 is Fever.__init__
-        self._console.print(
-            "Calling fever dep tracker from",
-            inspect.getmodule(caller_code_obj).__name__,
-            inspect.getfile(caller_code_obj),
-            style="italic blue on black",
-        )
-        self._user_modules[inspect.getmodule(caller_code_obj).__name__] = (
-            inspect.getfile(caller_code_obj)
-        )
+        caller_code_obj = sys._getframe(2).f_code  # Level 2 because 1 is Fever.__init__
+        if caller_code_module := inspect.getmodule(caller_code_obj):
+            self._console.print(
+                "Calling fever dep tracker from",
+                caller_code_module.__name__,
+                inspect.getfile(caller_code_obj),
+                style="italic blue on black",
+            )
+            self._user_modules[caller_code_module.__name__] = inspect.getfile(
+                caller_code_obj
+            )
+        else:
+            raise RuntimeError(
+                "Could not determine caller module for DependencyTracker setup"
+            )
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
+        # self._original_importer = builtins.__import__
         # builtins.__import__ = self._import
+
+        # Insert our finder/loader as top priority:
         sys.meta_path.insert(0, self)
 
     def cleanup(self):
@@ -81,6 +88,7 @@ class DependencyTracker(MetaPathFinder, Loader):
                 sys.meta_path.remove(finder)
 
     def create_module(self, spec: ModuleSpec) -> ModuleType | None:
+        _ = spec
         return None  # Fallback to default machinery
 
     def exec_module(self, module) -> None:
@@ -103,7 +111,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            self._fever.on_module_load(module.__name__, code_str)
+            self.on_module_load_callback(module.__name__)
 
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target=None
@@ -273,4 +281,4 @@ class DependencyTracker(MetaPathFinder, Loader):
 
     @property
     def all_imports(self) -> List[str]:
-        return self._dep_graph.nodes
+        return list(self._dep_graph.nodes)
