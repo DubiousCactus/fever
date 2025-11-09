@@ -100,7 +100,6 @@ class FeverCore:
     def on_new_import(self, module_name: str, module: object) -> None:
         _ = module_name
         _ = module
-        pass
 
     def plot_dependency_graph(self):
         self.dependency_tracker.plot()
