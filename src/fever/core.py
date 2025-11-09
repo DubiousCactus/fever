@@ -120,11 +120,11 @@ class FeverCore:
             assert isinstance(class_, object)
             for method in methods:
                 self._track_method(method, class_, module)
-        # for lambda_ in module.lambdas:
-        #     # NOTE: We can't really track lambdas as they are anonymous and we have no
-        #     # way to hook them unless we do some AST rewriting?. But I have been able to
-        #     # track lambdas *reactively* at crash time, so I may adopt this strategy
-        #     # later.
+
+        # NOTE: We can't really track lambdas as they are anonymous and we have no
+        # way to hook them unless we do some AST rewriting?. But I have been able to
+        # track lambdas *reactively* at crash time, so I may adopt this strategy
+        # later.
 
     def _track_function(self, func: FeverFunction, module: FeverModule) -> None:
         if hasattr(getattr(module.obj, func.name, {}), "__wrapped__"):
