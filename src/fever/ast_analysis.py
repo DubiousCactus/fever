@@ -146,6 +146,7 @@ class ASTAnalyzer(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         class_obj = getattr(self._context_stack[-1], node.name, GenericClass)
+        assert self._source is not None
         code = ast.get_source_segment(self._source, node)
         code_hash = hash(code)
         self._context_stack.append(class_obj)
@@ -190,6 +191,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             # the module. This requires no module reloading at all :)
             func_obj = getattr(self._context_stack[-1], node.name, generic_function)
             self._context_stack.append(func_obj)
+            assert self._source is not None
             code = ast.get_source_segment(self._source, node)
             code_hash = hash(code)
             fever_obj = FeverFunction(

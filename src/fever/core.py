@@ -2,7 +2,7 @@ import os
 import sys
 import warnings
 from types import ModuleType
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 from uuid import UUID
 
 from rich.console import Console
@@ -78,7 +78,7 @@ class FeverCore:
         self.dependency_tracker.cleanup()
         self.registry.cleanup()
 
-    def on_module_load(self, module_name: str, code_str: str) -> None:
+    def on_module_load(self, module_name: str) -> None:
         """
         Make the inventory of all callables (functions, classes, methods) defined in the
         imported module 'module_name', register their code in the registry, and track
@@ -98,6 +98,8 @@ class FeverCore:
             self._track_module(fever_module)
 
     def on_new_import(self, module_name: str, module: object) -> None:
+        _ = module_name
+        _ = module
         pass
 
     def plot_dependency_graph(self):
@@ -134,6 +136,7 @@ class FeverCore:
         assert func.obj is not generic_function, (
             f"on_registry_add(): function {func.name} is the generic function!"
         )
+        assert isinstance(func.obj, Callable)
         setattr(module.obj, func.name, self._call_tracker.track_calls(func.obj))
 
     def _track_method(
@@ -147,6 +150,7 @@ class FeverCore:
                 RuntimeWarning,
             )
         assert isinstance(method.obj, object)
+        assert isinstance(method.obj, Callable)
         assert method.obj is not generic_function, (
             f"on_registry_add(): method {method.name} is the generic function!"
         )
@@ -211,6 +215,7 @@ class FeverCore:
     ) -> None:
         func_registry_namespace = self.registry._FUNCTION_PTRS[module_name]
         for cmp_func in fever_module.functions:
+            assert cmp_func.code is not None
             if (
                 fever_callable := self.registry.find_function_by_name(
                     cmp_func.name, module_name
@@ -244,6 +249,7 @@ class FeverCore:
     ) -> None:
         for cmp_class, cmp_methods in fever_module.methods.items():
             class_registry_namespace = self.registry._CLASS_PTRS[module_name]
+            assert cmp_class.code is not None
             if cmp_class.name not in class_registry_namespace:
                 # INFO: The class doesn't exist in the loaded module so we
                 # compile it and track it.
@@ -261,6 +267,7 @@ class FeverCore:
                 cmp_class.name
             ]
             for cmp_method in cmp_methods:
+                assert cmp_method.code is not None
                 if (
                     fever_callable := self.registry.find_method_by_name(
                         cmp_method.name, cmp_class.name, module_name
@@ -302,4 +309,5 @@ class FeverCore:
         Rerun the entire call graph from given entry point (callable UUID), but use
         cached results for every node in the graph that wasn't reloaded.
         """
+        _ = entry_point
         raise NotImplementedError
