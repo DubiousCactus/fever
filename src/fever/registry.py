@@ -80,9 +80,10 @@ class Registry:
         assert callable is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
-        if isinstance(callable, FeverFunction):
-            self._callables[module_name].functions.append(callable)
-        self.fever.on_registry_add(self._callables[module_name])
+        assert isinstance(callable, FeverFunction), (
+            "add_function(): 'callable' must be a FeverFunction"
+        )
+        self._callables[module_name].functions.append(callable)
 
     def add_method(
         self, module_name: str, class_: FeverClass, callable: FeverFunction
@@ -92,19 +93,21 @@ class Registry:
         assert callable is not generic_function, (
             "add_function(): Cannot register generic_function"
         )
-        if isinstance(callable, FeverFunction):
-            self._callables[module_name].methods[class_].append(callable)
-        self.fever.on_registry_add(self._callables[module_name])
+        assert isinstance(callable, FeverFunction), (
+            "add_function(): 'callable' must be a FeverFunction"
+        )
+        self._callables[module_name].methods[class_].append(callable)
 
     def add_class(self, module_name: str, class_: FeverClass) -> None:
         if module_name not in self._callables:
             raise KeyError(f"'{module_name}' is not a tracked module")
         assert class_ is not GenericClass, "add_class(): Cannot register GenericClass"
-        if isinstance(class_, FeverClass):
-            self._callables[module_name].classes.append(class_)
-        self.fever.on_registry_add(self._callables[module_name])
+        assert isinstance(class_, FeverClass), (
+            "add_class(): 'class_' must be a FeverClass"
+        )
+        self._callables[module_name].classes.append(class_)
 
-    def on_module_load(self, module_name: str, code_str: str) -> None:
+    def make_inventory(self, module_name: str) -> FeverModule:
         self._console.print(
             f"Analyzing AST for module '{module_name}'", style="blue on black"
         )
@@ -113,4 +116,4 @@ class Registry:
             module_name, module, show_ast=False
         )
         assert self._callables[module_name].obj == module
-        self.fever.on_registry_add(self._callables[module_name])
+        return self._callables[module_name]

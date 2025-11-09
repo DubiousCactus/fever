@@ -14,7 +14,7 @@ from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
 from types import ModuleType
-from typing import Dict, List, Sequence, Tuple
+from typing import Callable, Dict, List, Sequence, Tuple
 
 import networkx as nx
 
@@ -39,7 +39,7 @@ def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None
 class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
-    def __init__(self, console: ConsoleInterface, fever):
+    def __init__(self, console: ConsoleInterface, on_module_load_callback: Callable):
         self.absolute_ignore_dirs = [
             os.path.join(os.getcwd(), d) for d in self.ignore_dirs
         ]
@@ -47,7 +47,7 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
         self._user_modules: Dict[str, str] = {}
-        self._fever = fever
+        self.on_module_load_callback = on_module_load_callback
 
     def setup(self, show_skips: bool = False):
         """
@@ -103,7 +103,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            self._fever.on_module_load(module.__name__, code_str)
+            self.on_module_load_callback(module.__name__, code_str)
 
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target=None

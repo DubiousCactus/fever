@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+import warnings
 from copy import copy, deepcopy
 from types import ModuleType
 from typing import Optional
@@ -9,7 +10,14 @@ from uuid import UUID
 from rich.console import Console
 
 import fever.registry as registry
-from fever.ast_analysis import ASTAnalyzer, FeverModule, generic_function
+from fever.ast_analysis import (
+    ASTAnalyzer,
+    FeverClass,
+    FeverFunction,
+    FeverLambda,
+    FeverModule,
+    generic_function,
+)
 from fever.registry import Registry
 
 from .call_tracker import CallTracker
@@ -32,20 +40,20 @@ class Fever:
     def __init__(self, rich_console: Optional[Console] = None):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
-        self._console_if = ConsoleInterface(console)
-        self._ast_analyzer = ASTAnalyzer(
+        self._console_if: ConsoleInterface = ConsoleInterface(console)
+        self._ast_analyzer: ASTAnalyzer = ASTAnalyzer(
             self._console_if if self._verbosity >= 3 else ConsoleInterface(None)
         )
-        self.registry = Registry(
+        self.registry: Registry = Registry(
             self._ast_analyzer,
             self._console_if if self._verbosity >= 1 else ConsoleInterface(None),
             self,
         )
-        self.dependency_tracker = DependencyTracker(
+        self.dependency_tracker: DependencyTracker = DependencyTracker(
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
-            self,
+            self.on_module_load,
         )
-        self.call_tracker = CallTracker(
+        self._call_tracker: CallTracker = CallTracker(
             self.registry,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
         )
@@ -79,7 +87,8 @@ class Fever:
         self.registry.cleanup()
 
     def on_module_load(self, module_name: str, code_str: str) -> None:
-        self.registry.on_module_load(module_name, code_str)
+        fever_module: FeverModule = self.registry.make_inventory(module_name)
+        self._track_module(fever_module)
 
     def on_new_import(self, module_name: str, module: object) -> None:
         pass
@@ -88,72 +97,81 @@ class Fever:
         self.dependency_tracker.plot()
 
     def plot_call_graph(self):
-        self.call_tracker.plot()
+        self._call_tracker.plot()
 
-    def on_registry_add(self, module: FeverModule) -> None:
-        # FIXME: Currently, we re-wrap every callable whenever this method is called!
-        # This is wrong, because we check whether func.obj is wrapped, but func.obj is
-        # never updated since we take the wrapper and replace the pointer in the module
-        # object. ie func.obj is always the original object! We need to re-implement the
-        # wrapping logic and simplify it. But let's first pass all tests.
+    def _track_module(self, module: FeverModule) -> None:
         for func in module.functions:
-            # assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
-            #     f"Function {func.name} was already wrapped! This is not supposed to happen."
-            # )
-            assert isinstance(func.obj, object)
-            assert func.obj is not generic_function, (
-                f"on_registry_add(): function {func.name} is the generic function!"
-            )
-            if func.name not in self.registry._FUNCTION_DEFS[module.root]:
-                self.registry._FUNCTION_DEFS[module.root][func.name] = func.obj
-            if not hasattr(func.obj, "__wrapped__"):
-                setattr(module.obj, func.name, self.call_tracker.track_calls(func.obj))
-            # FIXME: This invalidates the original func.obj right? I mean we won't be
-            # using it, so should we update it?
+            self.track_function(func, module)
 
         for class_ in module.classes:
             assert isinstance(class_, object)
-            if not hasattr(module.obj, class_.name):
-                setattr(module.obj, class_.name, class_.obj)
-            if class_.name not in self.registry._CLASS_DEFS[module.root]:
-                self.registry._CLASS_DEFS[module.root][class_.name] = class_.obj
-                setattr(module.obj, class_.name, class_.obj)
+            self.track_class(class_, module)
 
         for class_, methods in module.methods.items():
             assert isinstance(class_, object)
             for method in methods:
-                # FIXME: Nested classes can't be asserted this way
-                # class_obj = getattr(module.obj, class_.name, None)
-                # assert not hasattr(getattr(class_obj, method.name), "__wrapped__"), (
-                #     f"Function {method.name} was already wrapped! This is not supposed to happen."
-                # )
-                assert isinstance(method.obj, object)
-                assert method.obj is not generic_function, (
-                    f"on_registry_add(): method {method.name} is the generic function!"
-                )
-                if class_.name not in self.registry._CLASS_METHOD_DEFS[module.root]:
-                    self.registry._CLASS_METHOD_DEFS[module.root][class_.name] = {
-                        method.name: method.obj
-                    }
-                elif (
-                    method.name
-                    not in self.registry._CLASS_METHOD_DEFS[module.root][class_.name]
-                ):
-                    self.registry._CLASS_METHOD_DEFS[module.root][class_.name][
-                        method.name
-                    ] = method.obj
-                if not hasattr(method.obj, "__wrapped__"):
-                    setattr(
-                        class_.obj,
-                        method.name,
-                        self.call_tracker.track_calls(method.obj, fever_class=class_),
-                    )
-        for lambda_ in module.lambdas:
-            # NOTE: We can't really track lambdas as they are anonymous and we have no
-            # way to hook them unless we do some AST rewriting?. But I have been able to
-            # track lambdas *reactively* at crash time, so I may adopt this strategy
-            # later.
-            pass
+                self.track_method(method, class_, module)
+        # for lambda_ in module.lambdas:
+        #     # NOTE: We can't really track lambdas as they are anonymous and we have no
+        #     # way to hook them unless we do some AST rewriting?. But I have been able to
+        #     # track lambdas *reactively* at crash time, so I may adopt this strategy
+        #     # later.
+
+    def track_function(self, func: FeverFunction, module: FeverModule) -> None:
+        if hasattr(getattr(module.obj, func.name, {}), "__wrapped__"):
+            warnings.warn(
+                f"Function {func.name} was already wrapped! This is not supposed to happen.",
+                RuntimeWarning,
+            )
+        assert isinstance(func.obj, object)
+        assert func.obj is not generic_function, (
+            f"on_registry_add(): function {func.name} is the generic function!"
+        )
+        if func.name not in self.registry._FUNCTION_DEFS[module.root]:
+            self.registry._FUNCTION_DEFS[module.root][func.name] = func.obj
+        if not hasattr(func.obj, "__wrapped__"):
+            setattr(module.obj, func.name, self._call_tracker.track_calls(func.obj))
+        # FIXME: This invalidates the original func.obj right? I mean we won't be
+        # using it, so should we update it?
+
+    def track_method(
+        self, method: FeverFunction, class_: FeverClass, module: FeverModule
+    ) -> None:
+        # FIXME: Nested classes can't be asserted this way
+        class_obj = getattr(module.obj, class_.name, {})
+        if hasattr(getattr(class_obj, method.name, {}), "__wrapped__"):
+            warnings.warn(
+                f"Function {method.name} was already wrapped! This is not supposed to happen.",
+                RuntimeWarning,
+            )
+        assert isinstance(method.obj, object)
+        assert method.obj is not generic_function, (
+            f"on_registry_add(): method {method.name} is the generic function!"
+        )
+        if class_.name not in self.registry._CLASS_METHOD_DEFS[module.root]:
+            self.registry._CLASS_METHOD_DEFS[module.root][class_.name] = {
+                method.name: method.obj
+            }
+        elif (
+            method.name
+            not in self.registry._CLASS_METHOD_DEFS[module.root][class_.name]
+        ):
+            self.registry._CLASS_METHOD_DEFS[module.root][class_.name][method.name] = (
+                method.obj
+            )
+        if not hasattr(method.obj, "__wrapped__"):
+            setattr(
+                class_.obj,
+                method.name,
+                self._call_tracker.track_calls(method.obj, fever_class=class_),
+            )
+
+    def track_class(self, class_: FeverClass, module: FeverModule) -> None:
+        if not hasattr(module.obj, class_.name):
+            setattr(module.obj, class_.name, class_.obj)
+        if class_.name not in self.registry._CLASS_DEFS[module.root]:
+            self.registry._CLASS_DEFS[module.root][class_.name] = class_.obj
+            setattr(module.obj, class_.name, class_.obj)
 
     def reload(self):
         """
@@ -251,6 +269,7 @@ class Fever:
                     exec(cmp_func.code, registry_namespace)
                     cmp_func.obj = registry_namespace[cmp_func.name]
                     self.registry.add_function(module_name, cmp_func)
+                    self.track_function(cmp_func, cmp_fever_module)
 
             for cmp_class, cmp_methods in cmp_fever_module.methods.items():
                 for cmp_method in cmp_methods:
@@ -299,6 +318,7 @@ class Fever:
                                 cmp_class.name
                             ] = {}
                             self.registry.add_class(module_name, cmp_class)
+                            self.track_class(cmp_class, cmp_fever_module)
                         registry_namespace = self.registry._CLASS_METHOD_DEFS[
                             module_name
                         ][cmp_class.name]
@@ -316,6 +336,7 @@ class Fever:
                             cmp_class.name, module_name
                         ):
                             self.registry.add_method(module_name, class_, cmp_method)
+                            self.track_method(cmp_method, class_, cmp_fever_module)
                         else:
                             raise RuntimeError(
                                 f"Class '{cmp_class.name}' not found in registry "
