@@ -2,7 +2,7 @@ import os
 import sys
 import warnings
 from types import ModuleType
-from typing import Optional
+from typing import Dict, Optional
 from uuid import UUID
 
 from rich.console import Console
@@ -201,89 +201,101 @@ class FeverCore:
             # by our call wrapper. Subsequent calls to the function will point to the
             # updated code in the reigstry. It's beautiful, there is no need to refresh
             # imports or references.
-            func_registry_namespace = self.registry._FUNCTION_PTRS[module_name]
-            for cmp_func in cmp_fever_module.functions:
+            self._reload_functions(module_name, module_namespace, cmp_fever_module)
+            self._reload_classes_and_methods(
+                module_name, module_namespace, cmp_fever_module
+            )
+
+    def _reload_functions(
+        self, module_name: str, module_namespace: Dict, fever_module: FeverModule
+    ) -> None:
+        func_registry_namespace = self.registry._FUNCTION_PTRS[module_name]
+        for cmp_func in fever_module.functions:
+            if (
+                fever_callable := self.registry.find_function_by_name(
+                    cmp_func.name, module_name
+                )
+            ) and fever_callable.hash != cmp_func.hash:
+                self._console_if.print(
+                    f"Hash mismatch for function '{fever_callable.name}': hot reloading!",
+                    style="green on black",
+                )
+                compile_code_in_namespace(
+                    cmp_func.code,
+                    cmp_func.name,
+                    module_namespace,
+                    func_registry_namespace,
+                )
+            elif not fever_callable:
+                # INFO: The function doesn't exist in the loaded module so we
+                # compile it and track it.
+                compile_code_in_namespace(
+                    cmp_func.code,
+                    cmp_func.name,
+                    module_namespace,
+                    func_registry_namespace,
+                )
+                cmp_func.obj = func_registry_namespace[cmp_func.name]
+                self.registry.add_function(module_name, cmp_func)
+                self._track_function(cmp_func, fever_module)
+
+    def _reload_classes_and_methods(
+        self, module_name: str, module_namespace: Dict, fever_module: FeverModule
+    ) -> None:
+        for cmp_class, cmp_methods in fever_module.methods.items():
+            class_registry_namespace = self.registry._CLASS_PTRS[module_name]
+            if cmp_class.name not in class_registry_namespace:
+                # INFO: The class doesn't exist in the loaded module so we
+                # compile it and track it.
+                compile_code_in_namespace(
+                    cmp_class.code,
+                    cmp_class.name,
+                    module_namespace,
+                    class_registry_namespace,
+                )
+                cmp_class.obj = class_registry_namespace[cmp_class.name]
+                self.registry.add_class(module_name, cmp_class)
+                self._track_class(cmp_class, fever_module)
+
+            method_registry_namespace = self.registry._CLASS_METHOD_PTRS[module_name][
+                cmp_class.name
+            ]
+            for cmp_method in cmp_methods:
                 if (
-                    fever_callable := self.registry.find_function_by_name(
-                        cmp_func.name, module_name
+                    fever_callable := self.registry.find_method_by_name(
+                        cmp_method.name, cmp_class.name, module_name
                     )
-                ) and fever_callable.hash != cmp_func.hash:
+                ) and fever_callable.hash != cmp_method.hash:
                     self._console_if.print(
-                        f"Hash mismatch for function '{fever_callable.name}': hot reloading!",
+                        f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
                         style="green on black",
                     )
                     compile_code_in_namespace(
-                        cmp_func.code,
-                        cmp_func.name,
+                        cmp_method.code,
+                        cmp_method.name,
                         module_namespace,
-                        func_registry_namespace,
+                        method_registry_namespace,
                     )
                 elif not fever_callable:
-                    # INFO: The function doesn't exist in the loaded module so we
+                    # INFO: The method doesn't exist in the loaded module so we
                     # compile it and track it.
                     compile_code_in_namespace(
-                        cmp_func.code,
-                        cmp_func.name,
+                        cmp_method.code,
+                        cmp_method.name,
                         module_namespace,
-                        func_registry_namespace,
+                        method_registry_namespace,
                     )
-                    cmp_func.obj = func_registry_namespace[cmp_func.name]
-                    self.registry.add_function(module_name, cmp_func)
-                    self._track_function(cmp_func, cmp_fever_module)
-
-            for cmp_class, cmp_methods in cmp_fever_module.methods.items():
-                for cmp_method in cmp_methods:
-                    if (
-                        fever_callable := self.registry.find_method_by_name(
-                            cmp_method.name, cmp_class.name, module_name
+                    cmp_method.obj = method_registry_namespace[cmp_method.name]
+                    if class_ := self.registry.find_class_by_name(
+                        cmp_class.name, module_name
+                    ):
+                        self.registry.add_method(module_name, class_, cmp_method)
+                        self._track_method(cmp_method, class_, fever_module)
+                    else:
+                        raise RuntimeError(
+                            f"Class '{cmp_class.name}' not found in registry. "
+                            + "This should never happen, please make a bug report."
                         )
-                    ) and fever_callable.hash != cmp_method.hash:
-                        self._console_if.print(
-                            f"Hash mismatch for method '{fever_callable.name}': hot reloading!",
-                            style="green on black",
-                        )
-                        compile_code_in_namespace(
-                            cmp_method.code,
-                            cmp_method.name,
-                            module_namespace,
-                            registry_namespace=self.registry._CLASS_METHOD_PTRS[
-                                module_name
-                            ][cmp_class.name],
-                        )
-                    elif not fever_callable:
-                        class_registry_namespace = self.registry._CLASS_PTRS[
-                            module_name
-                        ]
-                        if cmp_class.name not in class_registry_namespace:
-                            compile_code_in_namespace(
-                                cmp_class.code,
-                                cmp_class.name,
-                                module_namespace,
-                                class_registry_namespace,
-                            )
-                            cmp_class.obj = class_registry_namespace[cmp_class.name]
-                            self.registry.add_class(module_name, cmp_class)
-                            self._track_class(cmp_class, cmp_fever_module)
-                        method_registry_namespace = self.registry._CLASS_METHOD_PTRS[
-                            module_name
-                        ][cmp_class.name]
-                        compile_code_in_namespace(
-                            cmp_method.code,
-                            cmp_method.name,
-                            module_namespace,
-                            method_registry_namespace,
-                        )
-                        cmp_method.obj = method_registry_namespace[cmp_method.name]
-                        if class_ := self.registry.find_class_by_name(
-                            cmp_class.name, module_name
-                        ):
-                            self.registry.add_method(module_name, class_, cmp_method)
-                            self._track_method(cmp_method, class_, cmp_fever_module)
-                        else:
-                            raise RuntimeError(
-                                f"Class '{cmp_class.name}' not found in registry. "
-                                + "This should never happen, please make a bug report."
-                            )
 
     def rerun(self, entry_point: UUID):
         """
