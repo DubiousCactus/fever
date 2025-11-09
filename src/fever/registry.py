@@ -91,10 +91,10 @@ class Registry:
         self, module_name: str, class_: FeverClass, method: FeverFunction
     ) -> None:
         assert method is not generic_function, (
-            "add_function(): Cannot register generic_function"
+            "add_method(): Cannot register generic_function"
         )
         assert isinstance(method, FeverFunction), (
-            "add_function(): 'callable' must be a FeverFunction"
+            "add_method(): 'callable' must be a FeverFunction"
         )
         self._inventory[module_name].methods[class_].append(method)
         self._add_method_code_pointer(module_name, class_, method)
