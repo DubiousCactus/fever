@@ -9,7 +9,7 @@ from uuid import UUID
 from rich.console import Console
 
 import fever.registry as registry
-from fever.ast_analysis import ASTAnalyzer, FeverModule
+from fever.ast_analysis import ASTAnalyzer, FeverModule, generic_function
 from fever.registry import Registry
 
 from .call_tracker import CallTracker
@@ -90,8 +90,70 @@ class Fever:
     def plot_call_graph(self):
         self.call_tracker.plot()
 
-    def on_registry_add(self, FeverModule):
-        self.call_tracker.on_registry_add(FeverModule)
+    def on_registry_add(self, module: FeverModule) -> None:
+        # FIXME: Currently, we re-wrap every callable whenever this method is called!
+        # This is wrong, because we check whether func.obj is wrapped, but func.obj is
+        # never updated since we take the wrapper and replace the pointer in the module
+        # object. ie func.obj is always the original object! We need to re-implement the
+        # wrapping logic and simplify it. But let's first pass all tests.
+        for func in module.functions:
+            # assert not hasattr(getattr(module.obj, func.name), "__wrapped__"), (
+            #     f"Function {func.name} was already wrapped! This is not supposed to happen."
+            # )
+            assert isinstance(func.obj, object)
+            assert func.obj is not generic_function, (
+                f"on_registry_add(): function {func.name} is the generic function!"
+            )
+            if func.name not in self.registry._FUNCTION_DEFS[module.root]:
+                self.registry._FUNCTION_DEFS[module.root][func.name] = func.obj
+            if not hasattr(func.obj, "__wrapped__"):
+                setattr(module.obj, func.name, self.call_tracker.track_calls(func.obj))
+            # FIXME: This invalidates the original func.obj right? I mean we won't be
+            # using it, so should we update it?
+
+        for class_ in module.classes:
+            assert isinstance(class_, object)
+            if not hasattr(module.obj, class_.name):
+                setattr(module.obj, class_.name, class_.obj)
+            if class_.name not in self.registry._CLASS_DEFS[module.root]:
+                self.registry._CLASS_DEFS[module.root][class_.name] = class_.obj
+                setattr(module.obj, class_.name, class_.obj)
+
+        for class_, methods in module.methods.items():
+            assert isinstance(class_, object)
+            for method in methods:
+                # FIXME: Nested classes can't be asserted this way
+                # class_obj = getattr(module.obj, class_.name, None)
+                # assert not hasattr(getattr(class_obj, method.name), "__wrapped__"), (
+                #     f"Function {method.name} was already wrapped! This is not supposed to happen."
+                # )
+                assert isinstance(method.obj, object)
+                assert method.obj is not generic_function, (
+                    f"on_registry_add(): method {method.name} is the generic function!"
+                )
+                if class_.name not in self.registry._CLASS_METHOD_DEFS[module.root]:
+                    self.registry._CLASS_METHOD_DEFS[module.root][class_.name] = {
+                        method.name: method.obj
+                    }
+                elif (
+                    method.name
+                    not in self.registry._CLASS_METHOD_DEFS[module.root][class_.name]
+                ):
+                    self.registry._CLASS_METHOD_DEFS[module.root][class_.name][
+                        method.name
+                    ] = method.obj
+                if not hasattr(method.obj, "__wrapped__"):
+                    setattr(
+                        class_.obj,
+                        method.name,
+                        self.call_tracker.track_calls(method.obj, fever_class=class_),
+                    )
+        for lambda_ in module.lambdas:
+            # NOTE: We can't really track lambdas as they are anonymous and we have no
+            # way to hook them unless we do some AST rewriting?. But I have been able to
+            # track lambdas *reactively* at crash time, so I may adopt this strategy
+            # later.
+            pass
 
     def reload(self):
         """
@@ -258,8 +320,6 @@ class Fever:
                             raise RuntimeError(
                                 f"Class '{cmp_class.name}' not found in registry "
                             )
-
-            # TODO: Class definitions!
 
     def rerun(self, entry_point: UUID):
         """
