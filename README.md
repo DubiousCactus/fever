@@ -65,8 +65,8 @@ new code. Pretty sweet, right?
 - [x] v0.0.3: Implement a reliable and unit-tested import hook mechanism
 - [ ] v0.0.4: Implement a reliable and unit-tested hot reloading mechanism
 - [ ] v0.0.5: Add interface to file watcher to trigger reload events
-- [ ] v0.0.6: Implement smart caching PoC
-- [ ] v0.0.7: Implement a reliable and Unit-tested smart caching mechanism
-- [ ] v0.0.8: Add a tool executable to wrap a script and launch the TUI
-- [ ] v0.0.9: PDB++ TUI integration + flexible API
+- [ ] v0.0.6: Implement a reliable and Unit-tested smart caching mechanism
+- [ ] v0.0.7: Add a tool executable to wrap a script and launch the TUI
+- [ ] v0.0.8: PDB++ TUI integration + flexible API
+- [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.)
 - [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI

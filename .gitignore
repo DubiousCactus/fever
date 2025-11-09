@@ -6,3 +6,6 @@ uv.lock
 .pytest_cache/
 dist/
 tmp_test_imports_backup
+src/*.dot
+src/*.html
+src/*.svg
