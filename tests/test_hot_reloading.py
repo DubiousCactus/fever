@@ -322,3 +322,74 @@ class TestHotReloading(unittest.TestCase):
         new_res: str = module_c.TestClass().call_me_baby()
         self.assertTrue(res)
         self.assertEqual(new_res, "Hey, I just met you!")
+
+    def test_function_with_packages(self):
+        import numpy as np  # noqa: F401
+        from submodules.module_e import function_foreign_imports  # noqa: F401
+
+        array = function_foreign_imports()
+        self.assertTrue(isinstance(array, np.ndarray))
+        self.assertTrue((array == np.array([2, 4, 6])).all())
+
+        fpath = "tests/test_imports/submodules/module_e.py"
+        replace_on_disk(
+            fpath,
+            """def function_foreign_imports() -> np.ndarray:\n    x = np.array([1, 2, 3])\n    return x * 2""",
+            """def function_foreign_imports() -> np.ndarray:\n    x = np.array([1, 2, 3])\n    return x * 3""",
+        )
+        self.fever.reload()
+        array = function_foreign_imports()
+        self.assertTrue(isinstance(array, np.ndarray))
+        self.assertTrue((array == np.array([3, 6, 9])).all())
+
+
+    def test_new_function_with_packages(self):
+        import numpy as np  # noqa: F401
+        import module_a # noqa: F401
+
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nimport numpy as np\n\ndef function_with_numpy() -> np.ndarray:\n    a = np.array([4, 5, 6])\n    return a + 1\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "function_with_numpy"))
+        res = module_a.function_with_numpy()
+        self.assertTrue(isinstance(res, np.ndarray))
+        self.assertTrue((res == np.array([5, 6, 7])).all())
+
+    def test_two_new_functions_with_ordered_dependency(self):
+        import module_a # noqa: F401
+
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\ndef new_fn_a():\n    return 123\n\ndef new_fn_b():\n    return new_fn_a()+1"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "new_fn_a"))
+        self.assertTrue(hasattr(module_a, "new_fn_b"))
+        res_a = module_a.new_fn_a()
+        res_b = module_a.new_fn_b()
+        self.assertEqual(res_a, 123)
+        self.assertEqual(res_b, 124)
+
+    def test_two_new_functions_with_unordered_dependency(self):
+        import module_a # noqa: F401
+
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\ndef new_fn_a():\n    return new_fn_b()*3\n\ndef new_fn_b():\n    return 1"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "new_fn_a"))
+        self.assertTrue(hasattr(module_a, "new_fn_b"))
+        res_a = module_a.new_fn_a()
+        res_b = module_a.new_fn_b()
+        self.assertEqual(res_a, 3)
+        self.assertEqual(res_b, 1)
+

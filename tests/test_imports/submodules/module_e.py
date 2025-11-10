@@ -1,5 +1,11 @@
+import numpy as np
+
 def function_e():
     print("yo e")
+
+def function_foreign_imports() -> np.ndarray:
+    x = np.array([1, 2, 3])
+    return x * 2
 
 
 def nested_functions() -> int:
