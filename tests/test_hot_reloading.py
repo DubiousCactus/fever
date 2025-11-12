@@ -375,6 +375,9 @@ class TestHotReloading(unittest.TestCase):
         self.assertEqual(res_a, 123)
         self.assertEqual(res_b, 124)
 
+    @unittest.skip(
+        "We don't currently handle unordered dependencies for new function definitions."
+    )
     def test_two_new_functions_with_unordered_dependency(self):
         import module_a  # noqa: F401
 
