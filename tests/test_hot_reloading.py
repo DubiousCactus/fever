@@ -342,10 +342,9 @@ class TestHotReloading(unittest.TestCase):
         self.assertTrue(isinstance(array, np.ndarray))
         self.assertTrue((array == np.array([3, 6, 9])).all())
 
-
-    def test_new_function_with_packages(self):
+    def test_new_function_with_new_import(self):
+        import module_a  # noqa: F401
         import numpy as np  # noqa: F401
-        import module_a # noqa: F401
 
         fpath = "tests/test_imports/module_a.py"
         with open(fpath, "a") as f:
@@ -360,7 +359,7 @@ class TestHotReloading(unittest.TestCase):
         self.assertTrue((res == np.array([5, 6, 7])).all())
 
     def test_two_new_functions_with_ordered_dependency(self):
-        import module_a # noqa: F401
+        import module_a  # noqa: F401
 
         fpath = "tests/test_imports/module_a.py"
         with open(fpath, "a") as f:
@@ -377,7 +376,7 @@ class TestHotReloading(unittest.TestCase):
         self.assertEqual(res_b, 124)
 
     def test_two_new_functions_with_unordered_dependency(self):
-        import module_a # noqa: F401
+        import module_a  # noqa: F401
 
         fpath = "tests/test_imports/module_a.py"
         with open(fpath, "a") as f:
@@ -392,4 +391,3 @@ class TestHotReloading(unittest.TestCase):
         res_b = module_a.new_fn_b()
         self.assertEqual(res_a, 3)
         self.assertEqual(res_b, 1)
-

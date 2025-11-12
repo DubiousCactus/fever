@@ -58,6 +58,14 @@ class FeverLambda:
 
 
 @dataclass
+class FeverImport:
+    module: str
+    code: Optional[str] = None
+    alias: Optional[str] = None
+    sub_imports: Optional[List[str]] = None
+
+
+@dataclass
 class FeverModule:
     root: str
     obj: object
@@ -65,6 +73,7 @@ class FeverModule:
     functions: List[FeverFunction]
     methods: Dict[FeverClass, List[FeverFunction]]
     lambdas: List[FeverLambda]
+    imports: List[FeverImport]
 
 
 class GenericClass:
@@ -90,6 +99,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             "functions": [],
             "lambdas": [],
             "methods": defaultdict(list),
+            "imports": [],
         }
 
     def make_module_inventory(
@@ -142,6 +152,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             functions=self._context["functions"],
             methods=self._context["methods"],
             lambdas=self._context["lambdas"],
+            imports=self._context["imports"],
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
@@ -219,3 +230,33 @@ class ASTAnalyzer(ast.NodeVisitor):
         # callables proably.
         self._context["lambdas"].append(FeverLambda(uuid1(), node, [], func_obj))
         self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import) -> Any:
+        self._console.print(
+            f"{node}: (names={[alias.name for alias in node.names]}, aliases={
+                [alias.asname for alias in node.names]
+            })",
+        )
+        assert self._source is not None
+        code = ast.get_source_segment(self._source, node)
+        for alias in node.names:
+            self._context["imports"].append(
+                FeverImport(alias.name, code, alias.asname, sub_imports=None)
+            )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> Any:
+        self._console.print(
+            f"{node}: (names={[alias.name for alias in node.names]}, aliases={[alias.asname for alias in node.names]}, module={node.module})",
+        )
+        code = ast.get_source_segment(self._source, node)
+        if node.module is None:
+            raise NotImplementedError(
+                "Relative imports without module name are not supported."
+            )
+        self._context["imports"].append(
+            FeverImport(
+                node.module,
+                code,
+                sub_imports=[alias.name for alias in node.names],
+            )
+        )

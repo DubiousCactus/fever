@@ -204,6 +204,9 @@ class FeverCore:
             # by our call wrapper. Subsequent calls to the function will point to the
             # updated code in the reigstry. It's beautiful, there is no need to refresh
             # imports or references.
+            # WARN: Make sure to start with new imports, so that new functions that
+            # depend on them will compile.
+            self._handle_new_imports(module_name, module_namespace, cmp_fever_module)
             self._reload_functions(module_name, module_namespace, cmp_fever_module)
             self._reload_classes_and_methods(
                 module_name, module_namespace, cmp_fever_module
@@ -302,6 +305,29 @@ class FeverCore:
                             f"Class '{cmp_class.name}' not found in registry. "
                             + "This should never happen, please make a bug report."
                         )
+
+    def _handle_new_imports(
+        self,
+        module_name: str,
+        module_namespace: Dict,
+        fever_module: FeverModule,
+    ) -> None:
+        # INFO: New imports need to be executed and placed in the module namespace so that new
+        # functions that depend on them can be compiled correctly. No need to modify the
+        # registry here.
+        for cmp_import in fever_module.imports:
+            if (
+                self.registry.find_import_by_name_or_alias(
+                    cmp_import.module, module_name
+                )
+                is None
+            ):
+                self._console_if.print(
+                    f"'New import detected: '{cmp_import.module}'",
+                    style="green on black",
+                )
+                assert cmp_import.code is not None
+                exec(cmp_import.code, module_namespace)
 
     def rerun(self, entry_point: UUID):
         """

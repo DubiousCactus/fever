@@ -7,11 +7,12 @@
 
 
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
 from fever.ast_analysis import (
     FeverClass,
     FeverFunction,
+    FeverImport,
     FeverModule,
     GenericClass,
     generic_function,
@@ -37,6 +38,14 @@ class Registry:
         self._FUNCTION_PTRS.clear()
         self._CLASS_METHOD_PTRS.clear()
         self._CLASS_PTRS.clear()
+
+    def find_import_by_name_or_alias(
+        self, name: str, module_name: str, alias: Optional[str] = None
+    ) -> FeverImport | None:
+        for import_ in self._inventory[module_name].imports:
+            if import_.module == name or (alias is not None and import_.alias == alias):
+                return import_
+        return None
 
     def find_function_by_name(
         self, name: str, module_name: str
@@ -112,6 +121,9 @@ class Registry:
         )
         self._inventory[module_name].classes.append(class_)
         self._add_class_code_pointer(module_name, class_)
+
+    def add_import(self, module_name: str, import_: FeverImport) -> None:
+        self._inventory[module_name].imports.append(import_)
 
     def add_module(self, module_name: str, module: FeverModule) -> None:
         """
