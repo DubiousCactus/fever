@@ -10,7 +10,6 @@ import inspect
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-from uuid import UUID, uuid1
 
 from rich.panel import Panel
 from rich.pretty import Pretty
@@ -25,11 +24,9 @@ from .utils import ConsoleInterface
 @dataclass
 class FeverClass:
     name: str
-    uid: UUID
-    ast_node: ast.ClassDef
     obj: object
     hash: int
-    code: Optional[str] = None
+    code: str
 
     def __hash__(self) -> int:
         return self.hash
@@ -38,12 +35,10 @@ class FeverClass:
 @dataclass
 class FeverFunction:
     name: str
-    uid: UUID
-    ast_node: ast.FunctionDef
     args: List[Any]
     obj: object
     hash: int
-    code: Optional[str] = None
+    code: str
 
     def __hash__(self) -> int:
         return self.hash
@@ -51,8 +46,6 @@ class FeverFunction:
 
 @dataclass
 class FeverLambda:
-    uid: UUID
-    ast_node: ast.Lambda
     args: List[Any]
     obj: Optional[object] = None
 
@@ -60,7 +53,7 @@ class FeverLambda:
 @dataclass
 class FeverImport:
     module: str
-    code: Optional[str] = None
+    code: str
     alias: Optional[str] = None
     sub_imports: Optional[List[str]] = None
 
@@ -88,7 +81,7 @@ class ASTAnalyzer(ast.NodeVisitor):
     def __init__(self, console: ConsoleInterface):
         self._console = console
         self._context_stack = deque()
-        self._source = None
+        self._source: Optional[str] = None
         self._context = {}
 
     def _reset_context(self):
@@ -159,16 +152,18 @@ class ASTAnalyzer(ast.NodeVisitor):
         class_obj = getattr(self._context_stack[-1], node.name, GenericClass)
         assert self._source is not None
         code = ast.get_source_segment(self._source, node)
+        if code is None:
+            raise RuntimeError(
+                f"Could not retrieve source code for class '{node.name}'"
+            )
         code_hash = hash(code)
         self._context_stack.append(class_obj)
         self._context["classes"].append(
             FeverClass(
                 node.name,
-                uuid1(),
-                node,
                 class_obj,
                 code_hash,
-                code=code,
+                code,
             )
         )
         self._console.print(Pretty(node))
@@ -184,7 +179,6 @@ class ASTAnalyzer(ast.NodeVisitor):
         module_level = not inspect.isclass(self._context_stack[-1])
         color = "yellow" if module_level else "green"
         prefix = "module" if module_level else "class"
-        self._console.print(Pretty(node))
         self._console.print(
             f"\\[{prefix}] {node.name}: (args={[arg.arg for arg in node.args.args]})",
             style=f"{color} on black",
@@ -204,10 +198,12 @@ class ASTAnalyzer(ast.NodeVisitor):
             self._context_stack.append(func_obj)
             assert self._source is not None
             code = ast.get_source_segment(self._source, node)
+            if code is None:
+                raise RuntimeError(
+                    f"Could not retrieve source code for func '{node.name}'"
+                )
             code_hash = hash(code)
-            fever_obj = FeverFunction(
-                node.name, uuid1(), node, [], func_obj, code_hash, code=code
-            )
+            fever_obj = FeverFunction(node.name, [], func_obj, code_hash, code)
             if module_level:
                 self._context["functions"].append(fever_obj)
             else:
@@ -216,7 +212,6 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._context_stack.pop()
 
     def visit_Lambda(self, node: ast.Lambda) -> Any:
-        self._console.print(Pretty(node))
         self._console.print(
             f"{node}: (args={[arg.arg for arg in node.args.args]})",
             style="green on black",
@@ -228,7 +223,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         # TODO: Maybe we can't get their code object ahead of time, but we can at least
         # collect their arguments, which we could also track. We need to do this for all
         # callables proably.
-        self._context["lambdas"].append(FeverLambda(uuid1(), node, [], func_obj))
+        self._context["lambdas"].append(FeverLambda([], func_obj))
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import) -> Any:
@@ -239,6 +234,10 @@ class ASTAnalyzer(ast.NodeVisitor):
         )
         assert self._source is not None
         code = ast.get_source_segment(self._source, node)
+        if code is None:
+            raise RuntimeError(
+                f"Could not retrieve source code for imports '{node.names}'"
+            )
         for alias in node.names:
             self._context["imports"].append(
                 FeverImport(alias.name, code, alias.asname, sub_imports=None)
@@ -248,7 +247,12 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._console.print(
             f"{node}: (names={[alias.name for alias in node.names]}, aliases={[alias.asname for alias in node.names]}, module={node.module})",
         )
+        assert self._source is not None
         code = ast.get_source_segment(self._source, node)
+        if code is None:
+            raise RuntimeError(
+                f"Could not retrieve source code for imports '{node.names}'"
+            )
         if node.module is None:
             raise NotImplementedError(
                 "Relative imports without module name are not supported."
