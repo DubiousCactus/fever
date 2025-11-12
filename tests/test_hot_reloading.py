@@ -342,22 +342,6 @@ class TestHotReloading(unittest.TestCase):
         self.assertTrue(isinstance(array, np.ndarray))
         self.assertTrue((array == np.array([3, 6, 9])).all())
 
-    def test_new_function_with_new_import(self):
-        import module_a  # noqa: F401
-        import numpy as np  # noqa: F401
-
-        fpath = "tests/test_imports/module_a.py"
-        with open(fpath, "a") as f:
-            f.write(
-                """\n\nimport numpy as np\n\ndef function_with_numpy() -> np.ndarray:\n    a = np.array([4, 5, 6])\n    return a + 1\n"""
-            )
-            f.flush()
-        self.fever.reload()
-        self.assertTrue(hasattr(module_a, "function_with_numpy"))
-        res = module_a.function_with_numpy()
-        self.assertTrue(isinstance(res, np.ndarray))
-        self.assertTrue((res == np.array([5, 6, 7])).all())
-
     def test_two_new_functions_with_ordered_dependency(self):
         import module_a  # noqa: F401
 
@@ -394,3 +378,54 @@ class TestHotReloading(unittest.TestCase):
         res_b = module_a.new_fn_b()
         self.assertEqual(res_a, 3)
         self.assertEqual(res_b, 1)
+
+    def test_new_function_with_new_import(self):
+        import module_a  # noqa: F401
+        import numpy as np  # noqa: F401
+
+        self.assertFalse(hasattr(module_a, "function_with_numpy"))
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nimport numpy as np\n\ndef function_with_numpy() -> np.ndarray:\n    a = np.array([4, 5, 6])\n    return a + 1\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "function_with_numpy"))
+        res = module_a.function_with_numpy()
+        self.assertTrue(isinstance(res, np.ndarray))
+        self.assertTrue((res == np.array([5, 6, 7])).all())
+
+    def test_new_function_with_new_subimports(self):
+        import module_a  # noqa: F401
+        from numpy import array, ndarray  # noqa: F401
+
+        self.assertFalse(hasattr(module_a, "function_with_numpy_array"))
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nfrom numpy import array\n\ndef function_with_numpy_array() -> array:\n    a = array([7, 8, 9])\n    return a + 2\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "function_with_numpy_array"))
+        res = module_a.function_with_numpy_array()
+        self.assertTrue(isinstance(res, ndarray))
+        self.assertTrue((res == array([9, 10, 11])).all())
+
+    def test_new_function_with_new_subimports_multiple(self):
+        import module_a  # noqa: F401
+        from numpy import array, linalg, ndarray  # noqa: F401
+
+        self.assertFalse(hasattr(module_a, "function_with_numpy_array"))
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nfrom numpy import array, linalg, ndarray\n\ndef function_with_numpy_array() -> ndarray:\n    a = array([7, 8, 9])\n    return linalg.norm(a + 2)\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "function_with_numpy_array"))
+        res = module_a.function_with_numpy_array()
+        self.assertTrue(isinstance(res, float))
+        self.assertEqual(res, linalg.norm(array([9, 10, 11])))

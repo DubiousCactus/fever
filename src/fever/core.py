@@ -323,7 +323,10 @@ class FeverCore:
                 is None
             ):
                 self._console_if.print(
-                    f"'New import detected: '{cmp_import.module}'",
+                    f"'New import detected: '{cmp_import.module}'"
+                    + f" (with sub-imports: {cmp_import.sub_imports})"
+                    if cmp_import.sub_imports
+                    else "",
                     style="green on black",
                 )
                 assert cmp_import.code is not None
