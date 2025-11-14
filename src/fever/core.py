@@ -32,6 +32,10 @@ def parse_verbosity() -> int:
     return 0
 
 
+class FeverWarning(Warning):
+    pass
+
+
 class FeverCore:
     def __init__(self, rich_console: Optional[Console] = None):
         self._verbosity = parse_verbosity()
@@ -129,13 +133,18 @@ class FeverCore:
         if hasattr(getattr(module.obj, func.name, {}), "__wrapped__"):
             warnings.warn(
                 f"Function {func.name} was already wrapped! This is not supposed to happen.",
-                RuntimeWarning,
+                FeverWarning,
             )
         assert isinstance(func.obj, object)
         assert func.obj is not generic_function, (
             f"on_registry_add(): function {func.name} is the generic function!"
         )
-        assert isinstance(func.obj, Callable)
+        if not isinstance(func.obj, Callable):
+            warnings.warn(
+                f"Function {method.name} is not a callable! Tracking of '{method.obj.__class__}' is currently not implemented.",
+                FeverWarning,
+            )
+            return
         setattr(module.obj, func.name, self._call_tracker.track_calls(func.obj))
 
     def _track_method(
@@ -146,10 +155,15 @@ class FeverCore:
         if hasattr(getattr(class_obj, method.name, {}), "__wrapped__"):
             warnings.warn(
                 f"Function {method.name} was already wrapped! This is not supposed to happen.",
-                RuntimeWarning,
+                FeverWarning,
             )
         assert isinstance(method.obj, object)
-        assert isinstance(method.obj, Callable)
+        if not isinstance(method.obj, Callable):
+            warnings.warn(
+                f"Method {method.name} is not a callable! Tracking of '{method.obj.__class__}' is currently not implemented.",
+                FeverWarning,
+            )
+            return
         assert method.obj is not generic_function, (
             f"on_registry_add(): method {method.name} is the generic function!"
         )
