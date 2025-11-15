@@ -11,6 +11,8 @@ dependencies = [
     "networkx",
     "matplotlib",
     "pdbpp",
+    "rich>=14.0.0",
+    "pywatchman>=3.0.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

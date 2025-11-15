@@ -181,7 +181,7 @@ class FeverCore:
         # into the existing module object.
         setattr(module.obj, class_.name, class_.obj)
 
-    def reload(self):
+    def reload(self, module_list: Optional[list[str]] = None) -> None:
         """
         Reload all callables that have changed on disk by comparing their hash to the
         ones stored in the registry. All callables are automatically tracked based on
@@ -196,6 +196,8 @@ class FeverCore:
           5. For each new callable not found in registry, add it.
         """
         for module_name in self.dependency_tracker.all_imports:
+            if module_list is not None and module_name not in module_list:
+                continue
             self._console_if.print(
                 f"Inspecting module '{module_name}'", style="purple on black"
             )
