@@ -48,6 +48,10 @@ new code. Pretty sweet, right?
     functions).
     c. Handle loops in a smart way! Aggregate results when possible, save to disk, or
     opt in for a given strategy?
+    d. Smart allocation of a memory budget for the cache: if the user allows a 10GB
+    cache, the Fever must allocate the cache memory to the most costly functions.
+    Function calls must be linearized and aggregated such that intermediate calls aren't
+    cached.
 3. (TODO) Handle multiprocessing for PyTorch dataloaders.
 4. Have a more flexible API that lets us do more things:
     a. Define the scope of hot reloading for a given "root callable".
@@ -65,7 +69,7 @@ new code. Pretty sweet, right?
 - [x] v0.0.3: Implement a reliable and unit-tested import hook mechanism
 - [x] v0.0.4: Implement a reliable and unit-tested hot reloading mechanism
 - [x] v0.0.5: Add interface to file watcher to trigger reload events
-- [ ] v0.0.6: Implement a reliable and Unit-tested smart caching mechanism
+- [ ] v0.0.6: Implement a reliable and unit-tested smart caching mechanism
 - [ ] v0.0.7: Add a tool executable to wrap a script and launch the TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
 - [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.)
