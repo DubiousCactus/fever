@@ -67,7 +67,7 @@ class CallTracker:
                 caller_frame.f_globals["__name__"] == "__main__"
             ):
                 # Most likely the entry point
-                caller_name = caller_frame.f_locals["__name__"]
+                caller_name = caller_frame.f_code.co_qualname
                 caller_obj = sys.modules["__main__"]
             else:
                 # Module-level functions
