@@ -40,14 +40,14 @@ class DependencyTracker(MetaPathFinder, Loader):
     ignore_dirs = [".git", "__pycache__", ".vscode", ".venv", "fever"]
 
     def __init__(self, console: ConsoleInterface, on_module_load_callback: Callable):
-        self.absolute_ignore_dirs = [
+        self._absolute_ignore_dirs = [
             os.path.join(os.getcwd(), d) for d in self.ignore_dirs
         ]
         self._console = console
         self._dep_graph = nx.DiGraph()
         self._show_skips = False
         self._user_modules: Dict[str, str] = {}
-        self.on_module_load_callback = on_module_load_callback
+        self._on_module_load_callback = on_module_load_callback
 
     def setup(self, show_skips: bool = False):
         """
@@ -111,7 +111,7 @@ class DependencyTracker(MetaPathFinder, Loader):
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
             # callables in the module; see call_tracker.py for that.
-            self.on_module_load_callback(module.__name__)
+            self._on_module_load_callback(module.__name__)
 
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target=None
@@ -130,27 +130,29 @@ class DependencyTracker(MetaPathFinder, Loader):
             return None
 
         for entry in path:
-            if any([d in entry for d in self.absolute_ignore_dirs]):
+            if any([d in entry for d in self._absolute_ignore_dirs]):
                 if self._show_skips:
                     self._console.print(
                         f"Skipping ignored path '{entry}'", style="red on black"
                     )
                 return None
-            self._console.print(
-                f"Searching for module '{fullname}' in path entry '{entry}'",
-                style="italic yellow on black",
-            )
+            if self._show_skips:
+                self._console.print(
+                    f"Searching for module '{fullname}' in path entry '{entry}'",
+                    style="italic yellow on black",
+                )
             file_path, submodule_locations = find_module_path(entry, name)
             if file_path is None:
                 # NOTE: In edge cases, the user may alter the system path to emulate
                 # project imports from other locations within the project's tree, such
                 # as git submodules or vendors. We handle this here:
                 for sys_path in sys.path:
-                    self._console.print(
-                        f"Searching for {fullname} in sys path {sys_path}",
-                        style="italic yellow on black",
-                    )
-                    if any([d in sys_path for d in self.absolute_ignore_dirs]):
+                    if self._show_skips:
+                        self._console.print(
+                            f"Searching for {fullname} in sys path {sys_path}",
+                            style="italic yellow on black",
+                        )
+                    if any([d in sys_path for d in self._absolute_ignore_dirs]):
                         continue
                     if os.path.commonpath([entry, sys_path]) == entry:
                         file_path, submodule_locations = find_module_path(
@@ -174,9 +176,10 @@ class DependencyTracker(MetaPathFinder, Loader):
                 loader=self,
                 submodule_search_locations=submodule_locations,
             )
-        self._console.print(
-            f"Module '{fullname}' not found in path '{path}'", style="red on black"
-        )
+        if self._show_skips:
+            self._console.print(
+                f"Module '{fullname}' not found in path '{path}'", style="red on black"
+            )
         return None
 
     def invalidate_caches(self):

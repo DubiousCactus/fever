@@ -29,6 +29,8 @@ def parse_verbosity() -> int:
         return 2
     elif v in ("vvv", "3"):
         return 3
+    elif v in ("vvvv", "4"):
+        return 4
     return 0
 
 
@@ -73,7 +75,7 @@ class FeverCore:
         subsequent call to the callable will be redirected to the proxy callable which
         will pull the bytecode from the registry.
         """
-        self.dependency_tracker.setup(show_skips=self._verbosity == 3)
+        self.dependency_tracker.setup(show_skips=self._verbosity == 4)
 
     def cleanup(self):
         """
