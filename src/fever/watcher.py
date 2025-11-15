@@ -11,7 +11,7 @@ from .core import FeverCore
 class FeverWatcher:
     def __init__(self, root_dir: Optional[str] = None):
         self._root_dir = root_dir or str(Path.cwd())
-        self._core = FeverCore()
+        self.fever = FeverCore()
         self._running = False
 
     def watch(self):
@@ -52,17 +52,17 @@ class FeverWatcher:
                     if files:
                         # Call async callback safely
                         print([os.path.basename(f["name"]) for f in files])
-                        self._core.reload(
+                        self.fever.reload(
                             [
                                 os.path.basename(f["name"]).replace(".py", "")
                                 for f in files
                             ]
                         )
 
-        self._core.setup()
+        self.fever.setup()
         t = threading.Thread(target=run_blocking, daemon=True)
         t.start()
 
     def stop(self):
         self._running = False
-        self._core.cleanup()
+        self.fever.cleanup()

@@ -143,7 +143,7 @@ class FeverCore:
         )
         if not isinstance(func.obj, Callable):
             warnings.warn(
-                f"Function {method.name} is not a callable! Tracking of '{method.obj.__class__}' is currently not implemented.",
+                f"Function {func.name} is not a callable! Tracking of '{func.obj.__class__}' is currently not implemented.",
                 FeverWarning,
             )
             return
