@@ -249,6 +249,7 @@ class FeverCore:
                     module_namespace,
                     func_registry_namespace,
                 )
+                fever_callable.hash = cmp_func.hash
             elif not fever_callable:
                 # INFO: The function doesn't exist in the loaded module so we
                 # compile it and track it.
@@ -301,6 +302,7 @@ class FeverCore:
                         module_namespace,
                         method_registry_namespace,
                     )
+                    fever_callable.hash = cmp_method.hash
                 elif not fever_callable:
                     # INFO: The method doesn't exist in the loaded module so we
                     # compile it and track it.
