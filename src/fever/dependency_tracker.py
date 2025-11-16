@@ -10,15 +10,16 @@ import importlib
 import inspect
 import os
 import sys
+import warnings
 from collections import defaultdict
 from importlib.abc import Loader, MetaPathFinder
 from importlib.machinery import ModuleSpec
-from types import ModuleType
-from typing import Callable, Dict, List, Sequence, Tuple
+from types import FrameType, ModuleType
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import networkx as nx
 
-from .utils import ConsoleInterface
+from .utils import ConsoleInterface, FeverWarning
 
 
 def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None]:
@@ -49,13 +50,18 @@ class DependencyTracker(MetaPathFinder, Loader):
         self._user_modules: Dict[str, str] = {}
         self._on_module_load_callback = on_module_load_callback
 
-    def setup(self, show_skips: bool = False):
+    def setup(
+        self,
+        show_skips: bool = False,
+        caller_frame: Optional[FrameType] = None,
+    ):
         """
         Setup the import hook to keep track of user module imports.
         """
         self._console.print("Seting up the import hook", style="green on black")
         self._show_skips = show_skips
-        caller_code_obj = sys._getframe(2).f_code  # Level 2 because 1 is Fever.__init__
+        caller_frame = caller_frame or sys._getframe(1)
+        caller_code_obj = caller_frame.f_code
         if caller_code_module := inspect.getmodule(caller_code_obj):
             self._console.print(
                 "Calling fever dep tracker from",
@@ -67,10 +73,11 @@ class DependencyTracker(MetaPathFinder, Loader):
                 caller_code_obj
             )
         else:
-            raise RuntimeError(
-                "Could not determine caller module for DependencyTracker setup"
+            warnings.warn(
+                "Could not determine caller module for Fever setup. Please make a bug report.",
+                FeverWarning,
             )
-        # NOTE: For now we don't need this hook bc we don't need the full dependency graph I think
+        # NOTE: For now we don't need this hook bc we don't need the full dependency graph
         # self._original_importer = builtins.__import__
         # builtins.__import__ = self._import
 
@@ -185,6 +192,8 @@ class DependencyTracker(MetaPathFinder, Loader):
     def invalidate_caches(self):
         self._user_modules = {}
 
+    # NOTE: We actually don't need the module imports DAG, so this hook is disabled for
+    # now. If the DAG is needed in the future, we can re-enable it.
     # def _import(
     #     self, name: str, globals=None, locals=None, fromlist=(), level=0
     # ) -> ModuleType:
@@ -277,6 +286,12 @@ class DependencyTracker(MetaPathFinder, Loader):
 
     def plot(self):
         from matplotlib import pyplot as plt
+
+        warnings.warn(
+            "DependencyTracker.plot(): The module imports DAG is currently disabled as it's not needed. "
+            + "The plot only shows imported module nodes.",
+            FeverWarning,
+        )
 
         plt.tight_layout()
         nx.draw_networkx(self._dep_graph, arrows=True)

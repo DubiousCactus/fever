@@ -1,7 +1,7 @@
 import os
 import sys
 import warnings
-from types import ModuleType
+from types import FrameType, ModuleType
 from typing import Callable, Dict, Optional
 from uuid import UUID
 
@@ -18,7 +18,7 @@ from fever.registry import Registry
 
 from .call_tracker import CallTracker
 from .dependency_tracker import DependencyTracker
-from .utils import ConsoleInterface, compile_code_in_namespace
+from .utils import ConsoleInterface, FeverWarning, compile_code_in_namespace
 
 
 def parse_verbosity() -> int:
@@ -32,10 +32,6 @@ def parse_verbosity() -> int:
     elif v in ("vvvv", "4"):
         return 4
     return 0
-
-
-class FeverWarning(Warning):
-    pass
 
 
 class FeverCore:
@@ -56,7 +52,7 @@ class FeverCore:
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
         )
 
-    def setup(self):
+    def setup(self, caller_frame: Optional[FrameType] = None):
         """
         Start tracking user imports and function/method calls in real time. Any `import`
         statements coming before calling this function will not be tracked, and as a
@@ -75,7 +71,10 @@ class FeverCore:
         subsequent call to the callable will be redirected to the proxy callable which
         will pull the bytecode from the registry.
         """
-        self.dependency_tracker.setup(show_skips=self._verbosity == 4)
+        self.dependency_tracker.setup(
+            show_skips=self._verbosity == 4,
+            caller_frame=caller_frame or sys._getframe(1),
+        )
 
     def cleanup(self):
         """

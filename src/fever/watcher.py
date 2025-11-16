@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import Optional
@@ -59,7 +60,7 @@ class FeverWatcher:
                             ]
                         )
 
-        self.fever.setup()
+        self.fever.setup(caller_frame=sys._getframe(1))
         t = threading.Thread(target=run_blocking, daemon=True)
         t.start()
 

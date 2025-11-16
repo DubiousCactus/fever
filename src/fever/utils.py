@@ -11,6 +11,10 @@ from typing import Dict, Optional
 from rich.console import Console
 
 
+class FeverWarning(Warning):
+    pass
+
+
 class ConsoleInterface:
     def __init__(self, console: Optional[Console]):
         self.console = console
