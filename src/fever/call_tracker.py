@@ -96,6 +96,7 @@ class CallTracker:
                 )
                 self._console.print(warn, style="red on black")
                 warnings.warn(warn, FeverWarning)
+                caller_obj = module.obj  # Fallback to the module object
             else:
                 self._call_graph.add_edge(caller_obj, func.obj)
                 # TODO: Make the weight be statistics about the CPU time spent in the
