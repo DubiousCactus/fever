@@ -31,12 +31,13 @@ def compile_code_in_namespace(
     namespace with the new code definition. This seems like the most robust solution
     right now, but I will think about it again and implement loads of tests.
     """
-    exec_namespace = module_namespace  # | registry_namespace
-    # FIXME: I just found a massive bug.
-    # I see that the problem is definitely that we merge the registry namespace, which
-    # contains *raw function pointers, not wrapped*, into the module namespace which
-    # contains the *wrapped function*. However, we definitely want the recompiled object
-    # to use the wrapped objects, not the raw underlying objects!
+    # WARN: I found that merging the registry namespace is wrong because it contains
+    # *raw function pointers, not wrapped*. While the module namespace contains the
+    # *wrapped function*. However, we definitely want the recompiled object to use the
+    # wrapped objects, not the raw underlying objects!
+    # TODO: Implement more thorough tests to make sure that everything works right.
+    exec_namespace = module_namespace.copy()
+    # exec_namespace = module_namespace | registry_namespace
     exec(code, exec_namespace)
     registry_namespace[callable_name] = exec_namespace[callable_name]
     # registry_namespace.update(
