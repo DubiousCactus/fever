@@ -60,7 +60,7 @@ class FeverImport:
 
 @dataclass
 class FeverModule:
-    root: str
+    name: str
     obj: object
     classes: List[FeverClass]
     functions: List[FeverFunction]
@@ -139,7 +139,7 @@ class ASTAnalyzer(ast.NodeVisitor):
         self._console.print("Analyzing callables...", style="green on black")
         self.visit(ast_root)
         return FeverModule(
-            root=name,
+            name=name,
             obj=module_obj,
             classes=self._context["classes"],
             functions=self._context["functions"],

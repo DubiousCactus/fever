@@ -168,7 +168,7 @@ class FeverCore:
                 FeverWarning,
             )
             return
-        setattr(module.obj, func.name, self._call_tracker.track_calls(func.obj))
+        setattr(module.obj, func.name, self._call_tracker.track_calls(func, module))
 
     def _track_method(
         self, method: FeverFunction, class_: FeverClass, module: FeverModule
@@ -193,7 +193,7 @@ class FeverCore:
         setattr(
             class_.obj,
             method.name,
-            self._call_tracker.track_calls(method.obj, fever_class=class_),
+            self._call_tracker.track_calls(method, module, class_),
         )
 
     def _track_class(self, class_: FeverClass, module: FeverModule) -> None:
