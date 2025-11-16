@@ -1,8 +1,8 @@
 def new_function(value: float) -> float:
-    return value * 2.4
+    return value * 2.5
 
 
 def example_function(name: str):
     print(f"Hello, {name}!!")
     print("Things will change from now on!")
-    print(new_function(1.6))
+    print(new_function(1.4))
