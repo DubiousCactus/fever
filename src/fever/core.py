@@ -1,4 +1,3 @@
-import os
 import sys
 import warnings
 from types import FrameType, ModuleType
@@ -18,7 +17,7 @@ from fever.registry import Registry
 
 from .call_tracker import CallTracker
 from .dependency_tracker import DependencyTracker
-from .utils import ConsoleInterface, FeverWarning
+from .utils import ConsoleInterface, FeverWarning, parse_verbosity
 
 
 def compile_code_in_namespace(
@@ -42,18 +41,6 @@ def compile_code_in_namespace(
         }
     )
 
-
-def parse_verbosity() -> int:
-    v = os.getenv("VERBOSITY", "").lower()
-    if v in ("v", "1"):
-        return 1
-    elif v in ("vv", "2"):
-        return 2
-    elif v in ("vvv", "3"):
-        return 3
-    elif v in ("vvvv", "4"):
-        return 4
-    return 0
 
 
 class FeverCore:
