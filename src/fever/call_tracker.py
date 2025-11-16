@@ -9,7 +9,7 @@ import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import networkx as nx
 
@@ -22,9 +22,23 @@ class FeverParameters:
     __slots__ = "args", "kwargs", "hash"
 
     def __init__(self, args: tuple, kwargs: dict):
-        self.args = args
-        self.kwargs = kwargs
-        self.hash = hash((args, frozenset(kwargs.items())))
+        def make_immutable(x: Any) -> object:
+            if isinstance(x, dict):
+                return frozenset(
+                    {make_immutable(k): make_immutable(v) for k, v in x.items()}
+                )
+            elif isinstance(x, list):
+                return tuple([make_immutable(a) for a in x])
+            elif isinstance(x, set):
+                return frozenset([make_immutable(a) for a in x])
+            elif isinstance(x, tuple):
+                return tuple([make_immutable(a) for a in x])
+            else:
+                return x
+
+        self.args = make_immutable(args)
+        self.kwargs = make_immutable(kwargs)
+        self.hash = hash((self.args, self.kwargs))
 
     def __hash__(self) -> int:
         return self.hash
