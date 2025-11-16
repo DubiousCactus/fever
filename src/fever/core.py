@@ -233,6 +233,7 @@ class FeverCore:
             # WARN: Make sure to start with new imports, so that new functions that
             # depend on them will compile.
             self._handle_new_imports(module_name, module_namespace, cmp_fever_module)
+            self._add_new_globals(module_namespace, cmp_fever_module)
             self._reload_functions(module_name, module_namespace, cmp_fever_module)
             self._reload_classes_and_methods(
                 module_name, module_namespace, cmp_fever_module
@@ -359,6 +360,22 @@ class FeverCore:
                 )
                 assert cmp_import.code is not None
                 exec(cmp_import.code, module_namespace)
+
+    def _add_new_globals(
+        self,
+        module_namespace: Dict,
+        fever_module: FeverModule,
+    ) -> None:
+        # INFO: New global variables need to be added to the module namespace so that
+        # new functions that depend on them can be compiled correctly. No need to modify
+        # the registry here.
+        for fever_global_var in fever_module.globals:
+            if fever_global_var.name not in module_namespace:
+                self._console_if.print(
+                    f"New global variable detected: '{fever_global_var.name}={fever_global_var.value}'",
+                    style="green on black",
+                )
+                module_namespace[fever_global_var.name] = fever_global_var.value
 
     def rerun(self, entry_point: UUID):
         """
