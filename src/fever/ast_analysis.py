@@ -59,6 +59,12 @@ class FeverImport:
 
 
 @dataclass
+class FeverGlobalVar:
+    name: str
+    value: Any
+
+
+@dataclass
 class FeverModule:
     name: str
     obj: object
@@ -67,6 +73,7 @@ class FeverModule:
     methods: Dict[FeverClass, List[FeverFunction]]
     lambdas: List[FeverLambda]
     imports: List[FeverImport]
+    globals: List[FeverGlobalVar]
 
 
 class GenericClass:
@@ -93,6 +100,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             "lambdas": [],
             "methods": defaultdict(list),
             "imports": [],
+            "globals": [],
         }
 
     def make_module_inventory(
@@ -146,6 +154,7 @@ class ASTAnalyzer(ast.NodeVisitor):
             methods=self._context["methods"],
             lambdas=self._context["lambdas"],
             imports=self._context["imports"],
+            globals=self._context["globals"],
         )
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
@@ -264,3 +273,13 @@ class ASTAnalyzer(ast.NodeVisitor):
                 sub_imports=[alias.name for alias in node.names],
             )
         )
+
+    def visit_Assign(self, node: ast.Assign) -> Any:
+        if "value" in node.value._fields and "id" in node.targets[0]._fields:
+            target = node.targets[0].__dict__["id"]
+            value = node.value.__dict__["value"]
+            self._console.print(
+                f"GlobalVar: (target={target}, value={value})",
+            )
+            self._context["globals"].append(FeverGlobalVar(target, value))
+        self.generic_visit(node)
