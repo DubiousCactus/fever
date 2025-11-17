@@ -59,6 +59,8 @@ new code. Pretty sweet, right?
     c. Allow saving a whole execution graph on disk, letting us replay for debugging
     step by step and rewinding, and letting us hot-reload on a "playthrough" file.
 5. (TODO) Handling GPU computation???? (no idea what/how/why yet).
+6. Keep a history of changes so that we can revert code changes (e.g. in case the new
+    code causes a crash).
 
 
 ## Roadmap
@@ -73,4 +75,4 @@ new code. Pretty sweet, right?
 - [ ] v0.0.7: Add a tool executable to wrap a script and launch the TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
 - [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.)
-- [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI
+- [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI + hang-on-throw
