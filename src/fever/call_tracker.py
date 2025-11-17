@@ -9,45 +9,14 @@ import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
 from fever.registry import Registry
-from fever.utils import ConsoleInterface, FeverWarning
-
-
-class FeverParameters:
-    __slots__ = "args", "kwargs", "hash"
-
-    def __init__(self, args: tuple, kwargs: dict):
-        def make_immutable(x: Any) -> object:
-            if isinstance(x, dict):
-                return frozenset(
-                    {make_immutable(k): make_immutable(v) for k, v in x.items()}
-                )
-            elif isinstance(x, list):
-                return tuple([make_immutable(a) for a in x])
-            elif isinstance(x, set):
-                return frozenset([make_immutable(a) for a in x])
-            elif isinstance(x, tuple):
-                return tuple([make_immutable(a) for a in x])
-            else:
-                return x
-
-        self.args = make_immutable(args)
-        self.kwargs = make_immutable(kwargs)
-        self.hash = hash((self.args, self.kwargs))
-
-    def __hash__(self) -> int:
-        return self.hash
-
-    def __str__(self) -> str:
-        full_str = f"args={self.args}, kwargs={self.kwargs}"
-        if len(full_str) > 30:
-            full_str = full_str[:27] + "..."
-        return full_str
+from fever.types import FeverParameters, FeverWarning
+from fever.utils import ConsoleInterface
 
 
 class TrackingMode(enum.Enum):

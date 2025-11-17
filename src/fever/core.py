@@ -8,16 +8,14 @@ from rich.console import Console
 
 from fever.ast_analysis import (
     ASTAnalyzer,
-    FeverClass,
-    FeverFunction,
-    FeverModule,
     generic_function,
 )
 from fever.registry import Registry
 
 from .call_tracker import CallTracker, TrackingMode
 from .dependency_tracker import DependencyTracker
-from .utils import ConsoleInterface, FeverWarning, parse_verbosity
+from .types import FeverClass, FeverFunction, FeverModule, FeverWarning
+from .utils import ConsoleInterface, parse_verbosity
 
 
 def compile_code_in_namespace(
