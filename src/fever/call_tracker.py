@@ -14,6 +14,7 @@ from typing import Callable, Optional
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
+from fever.cache import Cache
 from fever.registry import Registry
 from fever.types import FeverParameters, FeverWarning
 from fever.utils import ConsoleInterface
@@ -79,6 +80,7 @@ class CallTracker:
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
+        self._cache = Cache()
 
     def track_calls(
         self,
@@ -123,7 +125,6 @@ class CallTracker:
 
             self._call_graph.add_nodes_from([k, v])
             params = FeverParameters(args, kwargs)
-            print(f"Called {func.name} with params: {params}")
             self._call_graph.add_edge(k, v, key=params.hash, params=params)
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
@@ -136,12 +137,19 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
+            if cached_result := self._cache.get(func_ptr, params):
+                self._console.print(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                    style="yellow on black",
+                )
+                return cached_result
             start = timeit.default_timer()
             result = func_ptr(*args, **kwargs)
             end = timeit.default_timer()
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
-            # want the caller to be the function name instead of the pointer?
+            # want the caller to be the function name instead of the pointer, so we
+            # parameterize the strategy with self._tracking_mode.
             edge_data = self._call_graph.edges[k, v, params.hash]
             if "weight" not in edge_data:
                 edge_data["cum_time"] = 0.0
@@ -149,6 +157,7 @@ class CallTracker:
             edge_data["cum_time"] += end - start
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
+            self._cache.set(func_ptr, params, edge_data, result)
             return result
 
         return fever_wrapper

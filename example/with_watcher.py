@@ -28,7 +28,7 @@ def run():
     # a simple fix since I track the calling module upon setup.
     while running:
         example_function(random.choice(words))
-        sleep(1)
+        sleep(0.1)
 
     # watcher.fever.plot_dependency_graph()
     watcher.fever.plot_call_graph()
