@@ -13,6 +13,7 @@ dependencies = [
     "pdbpp",
     "rich>=14.0.0",
     "pywatchman>=3.0.0",
+    "pympler>=1.1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

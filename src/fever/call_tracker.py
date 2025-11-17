@@ -14,7 +14,7 @@ from typing import Callable, Optional
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
-from fever.cache import Cache
+from fever.cache import Cache, ParamWiseLRUEvictionPolicy
 from fever.registry import Registry
 from fever.types import FeverParameters, FeverWarning
 from fever.utils import ConsoleInterface
@@ -80,7 +80,7 @@ class CallTracker:
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
-        self._cache = Cache()
+        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy())
 
     def track_calls(
         self,
@@ -157,6 +157,7 @@ class CallTracker:
             edge_data["cum_time"] += end - start
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
+            edge_data["last_timestamp"] = start
             self._cache.set(func_ptr, params, edge_data, result)
             return result
 
