@@ -129,6 +129,7 @@ class Cache:
         self._console = console
         self._entries: Dict[object, Dict[int, Any]] = defaultdict(dict)
         self._stats: Dict[object, Dict[int, Any]] = defaultdict(dict)
+        self.mem_limit_human = mem_limit
         self._mem_limit_bytes = parse_mem_limit(mem_limit)
         self._min_calls_threshold = min_calls_threshold
         self._min_time_threhsold = min_time_s_threhsold
@@ -158,7 +159,7 @@ class Cache:
             self._eviction_policy.update_entry(function, params.hash)
             if asizeof.asizeof(self._entries) > self._mem_limit_bytes:
                 self._console.print(
-                    "Cache exceeded memory limit; evicting entries...",
+                    f"Cache exceeded memory limit of {self.mem_limit_human}; evicting entries...",
                     style="bold red",
                 )
                 while asizeof.asizeof(self._entries) > self._mem_limit_bytes:
@@ -173,4 +174,5 @@ class Cache:
         Linearize the cache by aggregating entries along linear call paths.
         """
         # TODO: Topological sort of the call graph. Then we can do more advanced things.
+        # NOTE: Is this useful?
         pass
