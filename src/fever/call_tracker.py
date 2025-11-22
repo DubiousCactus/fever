@@ -3,7 +3,9 @@
 #
 # Distributed under terms of the MIT license.
 
+import enum
 import sys
+import timeit
 import warnings
 from functools import wraps
 from types import FrameType
@@ -12,8 +14,25 @@ from typing import Callable, Optional
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
+from fever.cache import Cache, ParamWiseLRUEvictionPolicy
 from fever.registry import Registry
-from fever.utils import ConsoleInterface, FeverWarning
+from fever.types import FeverParameters, FeverWarning
+from fever.utils import ConsoleInterface
+
+
+class TrackingMode(enum.Enum):
+    """
+    KV_POINTERS: Track calls using caller and callee object pointers as keys and values.
+    This results in multiple copies of the same function in the call graph, if that
+    function is recompiled. This is desired if we want to keep track of specific
+    function objects.
+    KV_NAMES: Track calls using caller and callee names as keys and values. This
+    simplifies the graph to the original function names, but we lose information about
+    which version of the function was called or is calling.
+    """
+
+    KV_POINTERS = enum.auto()
+    KV_NAMES = enum.auto()
 
 
 def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
@@ -54,10 +73,14 @@ def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
 
 
 class CallTracker:
-    def __init__(self, registry: Registry, console: ConsoleInterface):
+    def __init__(
+        self, registry: Registry, tracking_mode: TrackingMode, console: ConsoleInterface
+    ):
         self._console = console
-        self._call_graph = nx.DiGraph()
+        self._call_graph = nx.MultiDiGraph()
         self._registry = registry
+        self._tracking_mode = tracking_mode
+        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy())
 
     def track_calls(
         self,
@@ -83,29 +106,26 @@ class CallTracker:
             # part.
             caller_frame = sys._getframe(1)
             caller_name = caller_frame.f_code.co_qualname
-            caller_obj = get_caller_obj(caller_frame, caller_name)
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "
                 + f"was called by '{caller_name}' at line {caller_frame.f_lineno}",
                 style="green on black",
             )
-            if caller_obj is None:
-                warn = (
-                    f"Could not resolve caller object for caller named '{caller_name}'"
-                )
-                self._console.print(warn, style="red on black")
-                warnings.warn(warn, FeverWarning)
-                caller_obj = module.obj  # Fallback to the module object
-            else:
-                self._call_graph.add_edge(caller_obj, func.obj)
-                # TODO: Make the weight be statistics about the CPU time spent in the
-                # call. We can track that in here, and we want the weight to be the
-                # average time.
-                if "weight" not in self._call_graph[caller_obj][func.obj]:
-                    self._call_graph[caller_obj][func.obj]["weight"] = 1
-                else:
-                    self._call_graph[caller_obj][func.obj]["weight"] += 1
+            params = None
+            k, v = caller_name, func.name
+            if self._tracking_mode == TrackingMode.KV_POINTERS:
+                caller_obj = get_caller_obj(caller_frame, caller_name)
+                if caller_obj is None:
+                    warn = f"Could not resolve caller object for caller named '{caller_name}'"
+                    self._console.print(warn, style="red on black")
+                    warnings.warn(warn, FeverWarning)
+                    caller_obj = module.obj  # Fallback to the module object
+                k, v = caller_obj, func.obj
+
+            self._call_graph.add_nodes_from([k, v])
+            params = FeverParameters(args, kwargs)
+            self._call_graph.add_edge(k, v, key=params.hash, params=params)
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
                 if class_
@@ -117,18 +137,67 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
-            return func_ptr(*args, **kwargs)
+            if cached_result := self._cache.get(func_ptr, params):
+                self._console.print(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                    style="yellow on black",
+                )
+                return cached_result
+            start = timeit.default_timer()
+            result = func_ptr(*args, **kwargs)
+            end = timeit.default_timer()
+            # WARN: The caller object will change as the caller function is recompiled!
+            # Because we look for it in the call stack. This is normal, but we might
+            # want the caller to be the function name instead of the pointer, so we
+            # parameterize the strategy with self._tracking_mode.
+            edge_data = self._call_graph.edges[k, v, params.hash]
+            if "weight" not in edge_data:
+                edge_data["cum_time"] = 0.0
+                edge_data["calls"] = 0
+            edge_data["cum_time"] += end - start
+            edge_data["calls"] += 1
+            edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
+            edge_data["last_timestamp"] = start
+            self._cache.set(func_ptr, params, edge_data, result)
+            return result
 
         return fever_wrapper
 
     def plot(self):
-        from matplotlib import pyplot as plt
+        import itertools as it
 
+        import matplotlib.pyplot as plt
+
+        G = self._call_graph
+        ax = plt.gca()
+        # Works with arc3 and angle3 connectionstyles
+        # connectionstyle = [f"arc3,rad={r}" for r in it.accumulate([0.15] * 4)]
+        connectionstyle = [f"angle3,angleA={r}" for r in it.accumulate([30] * 4)]
+
+        # pos = nx.spring_layout(
+        #     self._call_graph  # , seed=1
+        # )  # positions for all nodes - seed for reproducibility
+        # pos = nx.random_layout(G)
+        pos = nx.shell_layout(G)
+        nx.draw_networkx_nodes(G, pos, ax=ax)
+        nx.draw_networkx_labels(G, pos, font_size=10, ax=ax)
+        nx.draw_networkx_edges(
+            G, pos, edge_color="grey", connectionstyle=connectionstyle, ax=ax
+        )
+
+        labels = {
+            tuple(edge): attrs["params"]
+            for *edge, attrs in G.edges(keys=True, data=True)
+        }
+        nx.draw_networkx_edge_labels(
+            G,
+            pos,
+            labels,
+            connectionstyle=connectionstyle,
+            label_pos=0.3,
+            font_color="blue",
+            bbox={"alpha": 0},
+            ax=ax,
+        )
         plt.tight_layout()
-        pos = nx.spring_layout(
-            self._call_graph  # , seed=1
-        )  # positions for all nodes - seed for reproducibility
-        edge_labels = nx.get_edge_attributes(self._call_graph, "weight")
-        nx.draw_networkx(self._call_graph, pos, arrows=True)
-        nx.draw_networkx_edge_labels(self._call_graph, pos, edge_labels)
         plt.show()

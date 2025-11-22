@@ -19,7 +19,8 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import networkx as nx
 
-from .utils import ConsoleInterface, FeverWarning
+from .types import FeverWarning
+from .utils import ConsoleInterface
 
 
 def find_module_path(root: str, name: str) -> Tuple[str | None, List[str] | None]:

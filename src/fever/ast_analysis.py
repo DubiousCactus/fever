@@ -8,72 +8,21 @@
 import ast
 import inspect
 from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from rich.panel import Panel
 from rich.pretty import Pretty
 from rich.syntax import Syntax
 
+from .types import (
+    FeverClass,
+    FeverFunction,
+    FeverGlobalVar,
+    FeverImport,
+    FeverLambda,
+    FeverModule,
+)
 from .utils import ConsoleInterface
-
-# TODO: Replace dataclasses with namedtuples, they are more efficient. Or if we want to
-# keep type hints, custom classes with __slot__ should be more efficient as well.
-
-
-@dataclass
-class FeverClass:
-    name: str
-    obj: object
-    hash: int
-    code: str
-
-    def __hash__(self) -> int:
-        return self.hash
-
-
-@dataclass
-class FeverFunction:
-    name: str
-    args: List[Any]
-    obj: object
-    hash: int
-    code: str
-
-    def __hash__(self) -> int:
-        return self.hash
-
-
-@dataclass
-class FeverLambda:
-    args: List[Any]
-    obj: Optional[object] = None
-
-
-@dataclass
-class FeverImport:
-    module: str
-    code: str
-    alias: Optional[str] = None
-    sub_imports: Optional[List[str]] = None
-
-
-@dataclass
-class FeverGlobalVar:
-    name: str
-    value: Any
-
-
-@dataclass
-class FeverModule:
-    name: str
-    obj: object
-    classes: List[FeverClass]
-    functions: List[FeverFunction]
-    methods: Dict[FeverClass, List[FeverFunction]]
-    lambdas: List[FeverLambda]
-    imports: List[FeverImport]
-    globals: List[FeverGlobalVar]
 
 
 class GenericClass:

@@ -12,10 +12,6 @@ from typing import Optional
 from rich.console import Console
 
 
-class FeverWarning(Warning):
-    pass
-
-
 def parse_verbosity() -> int:
     v = os.getenv("VERBOSITY", "").lower()
     if v in ("v", "1"):

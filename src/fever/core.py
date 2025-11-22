@@ -8,16 +8,14 @@ from rich.console import Console
 
 from fever.ast_analysis import (
     ASTAnalyzer,
-    FeverClass,
-    FeverFunction,
-    FeverModule,
     generic_function,
 )
 from fever.registry import Registry
 
-from .call_tracker import CallTracker
+from .call_tracker import CallTracker, TrackingMode
 from .dependency_tracker import DependencyTracker
-from .utils import ConsoleInterface, FeverWarning, parse_verbosity
+from .types import FeverClass, FeverFunction, FeverModule, FeverWarning
+from .utils import ConsoleInterface, parse_verbosity
 
 
 def compile_code_in_namespace(
@@ -31,16 +29,22 @@ def compile_code_in_namespace(
     namespace with the new code definition. This seems like the most robust solution
     right now, but I will think about it again and implement loads of tests.
     """
-    exec_namespace = module_namespace | registry_namespace
+    # WARN: I found that merging the registry namespace is wrong because it contains
+    # *raw function pointers, not wrapped*. While the module namespace contains the
+    # *wrapped function*. However, we definitely want the recompiled object to use the
+    # wrapped objects, not the raw underlying objects!
+    # TODO: Implement more thorough tests to make sure that everything works right.
+    exec_namespace = module_namespace.copy()
+    # exec_namespace = module_namespace | registry_namespace
     exec(code, exec_namespace)
-    registry_namespace.update(
-        {
-            k: v
-            for k, v in exec_namespace.items()
-            if k in registry_namespace or k == callable_name
-        }
-    )
-
+    registry_namespace[callable_name] = exec_namespace[callable_name]
+    # registry_namespace.update(
+    #     {
+    #         k: v
+    #         for k, v in exec_namespace.items()
+    #         if k in registry_namespace or k == callable_name
+    #     }
+    # )
 
 
 class FeverCore:
@@ -58,6 +62,7 @@ class FeverCore:
         )
         self._call_tracker: CallTracker = CallTracker(
             self.registry,
+            TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
         )
 
@@ -217,6 +222,10 @@ class FeverCore:
                 continue
             module_obj: ModuleType = sys.modules[module_name]
             module_namespace = vars(module_obj)
+            print(
+                "new_function is wrapped? ",
+                hasattr(getattr(module_obj, "new_function", None), "__wrapped__"),
+            )
             cmp_fever_module: FeverModule = self._ast_analyzer.make_module_inventory(
                 module_name,
                 module_obj=module_obj,
