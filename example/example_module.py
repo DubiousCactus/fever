@@ -15,6 +15,6 @@ def called_function(value: float) -> str:
 
 
 def example_function(name: str):
-    print(f"Hello, {name}!!")
+    print(f"Hello, {name}!")
     print("Things will change from now on!")
     print(called_function(16.14)[:10] + "...")

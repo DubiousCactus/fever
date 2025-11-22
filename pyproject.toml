@@ -14,6 +14,7 @@ dependencies = [
     "rich>=14.0.0",
     "pywatchman>=3.0.0",
     "pympler>=1.1",
+    "typer",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -32,3 +33,12 @@ build-backend = "uv_build"
 dev = [
     "requests>=2.32.5",
 ]
+
+[project.scripts]
+fever = "fever.cli:app"
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true

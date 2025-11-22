@@ -222,10 +222,6 @@ class FeverCore:
                 continue
             module_obj: ModuleType = sys.modules[module_name]
             module_namespace = vars(module_obj)
-            print(
-                "new_function is wrapped? ",
-                hasattr(getattr(module_obj, "new_function", None), "__wrapped__"),
-            )
             cmp_fever_module: FeverModule = self._ast_analyzer.make_module_inventory(
                 module_name,
                 module_obj=module_obj,

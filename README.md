@@ -63,6 +63,22 @@ new code. Pretty sweet, right?
     code causes a crash).
 
 
+## Usage
+
+My previous attempt used a chain of modules that had to be manually defined. Each module
+was a callable that could be ran and reloaded in the order of the chain. Modules in the
+chain could be frozen, effectively skipping recomputation by caching the result.
+
+Now, I want this to be much much simpler. In the first iteration, I want to replace the
+chain by simple decorators around callables, such that there is no need to modify a
+codebase or add a new entry point to launch the chain. The program should run normally,
+but when a wrapped callable is called, we should take the hand and:
+1. catch all exceptions, allowing to drop in a debugger and inspect the frame.
+2. reload all code and verify whether the user modified code outside the trace of the
+   currently active callable.
+3. hang after execution of the callable.
+
+
 ## Roadmap
 
 - [x] v0.0.1: Basic proof of concept for hot code reloading only callables that changed
