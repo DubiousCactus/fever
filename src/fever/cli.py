@@ -7,6 +7,8 @@ import typer
 from rich.console import Console
 from typing_extensions import Annotated
 
+from .core import FeverCore
+from .tui.builder_ui import BuilderUI
 from .watcher import FeverWatcher
 
 app = typer.Typer()
@@ -43,8 +45,10 @@ def watch(
         console.print("Terminating watcher...", style="bold red")
     watcher.stop()
 
-    if os.getenv("VIZ", "0").lower() in ["1", "true"]:
+    if os.getenv("FEVER_PLOT_TRACE", "0").lower() in ["1", "true"]:
         watcher.fever.plot_call_graph()
+    if os.getenv("FEVER_PLOT_DEPS", "0").lower() in ["1", "true"]:
+        watcher.fever.plot_dependency_graph()
 
 
 @app.command(
@@ -57,7 +61,10 @@ def debug(
     """
     Debug a program with the TUI.
     """
-    print(f"Debugging script: {script} ")
+    fever_engine = FeverCore()
+    fever_engine.setup()
+    BuilderUI(fever_engine, []).run()
+    fever_engine.cleanup()
 
 
 if __name__ == "__main__":

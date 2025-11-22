@@ -15,6 +15,7 @@ dependencies = [
     "pywatchman>=3.0.0",
     "pympler>=1.1",
     "typer",
+    "textual>=6.6.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -96,3 +96,7 @@ class FeverParameters:
         if len(full_str) > 30:
             full_str = full_str[:27] + "..."
         return full_str
+
+
+class FeverEntryPoint:
+    pass
