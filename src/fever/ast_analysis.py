@@ -186,9 +186,7 @@ class ASTAnalyzer(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> Any:
         self._console.print(
-            f"{node}: (names={[alias.name for alias in node.names]}, aliases={
-                [alias.asname for alias in node.names]
-            })",
+            f"{node}: (names={[alias.name for alias in node.names]}, aliases={[alias.asname for alias in node.names]})",
         )
         assert self._source is not None
         code = ast.get_source_segment(self._source, node)
