@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Theo Morales", email = "theo.morales.fr@gmail.com" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "networkx",
     "matplotlib",
