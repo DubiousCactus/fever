@@ -74,13 +74,17 @@ def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
 
 class CallTracker:
     def __init__(
-        self, registry: Registry, tracking_mode: TrackingMode, console: ConsoleInterface
+        self,
+        registry: Registry,
+        tracking_mode: TrackingMode,
+        console: ConsoleInterface,
+        with_cache: bool,
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
-        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy())
+        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache)
 
     def track_calls(
         self,

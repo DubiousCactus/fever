@@ -21,12 +21,16 @@ console = Console()
 def watch(
     script: Annotated[str, typer.Argument(..., help="The script to run and watch.")],
     extra_args: List[str] = typer.Argument(None),
+    no_cache: Annotated[bool, typer.Option("--no-cache")] = False,
 ):
     """
     Watch for file changes and hot-reload as necessary.
     """
-    console.print(f"Watching script: {script} ", style="bold green")
-    watcher = FeverWatcher(rich_console=console)
+    console.print(
+        f"Watching script: {script} " + ("with caching" if not no_cache else ""),
+        style="bold green",
+    )
+    watcher = FeverWatcher(rich_console=console, with_cache=not no_cache)
     watcher.watch()
     command = [script] + (extra_args or [])
     sys.argv = command

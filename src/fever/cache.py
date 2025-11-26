@@ -125,6 +125,7 @@ class Cache:
         eviction_policy: EvictionPolicy,
         min_calls_threshold: int = 2,
         min_time_s_threhsold: float = 0.1,
+        enabled: bool = True
     ) -> None:
         self._console = console
         self._entries: Dict[object, Dict[int, Any]] = defaultdict(dict)
@@ -134,8 +135,11 @@ class Cache:
         self._min_calls_threshold = min_calls_threshold
         self._min_time_threhsold = min_time_s_threhsold
         self._eviction_policy = eviction_policy
+        self._enabled = enabled
 
     def get(self, function: object, params: FeverParameters) -> Any | None:
+        if not self._enabled:
+            return None
         self._eviction_policy.update_all()
         if function_cache := self._entries.get(function, None):
             if entry := function_cache.get(params.hash, None):
@@ -150,6 +154,8 @@ class Cache:
         statistics: Dict[str, Any],
         result: Any,
     ) -> None:
+        if not self._enabled:
+            return 
         if (
             statistics.get("calls", 0) >= self._min_calls_threshold
             and statistics.get("weight", 0) >= self._min_time_threhsold
