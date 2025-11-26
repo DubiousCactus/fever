@@ -30,8 +30,8 @@ def watch(
     watcher.watch()
     command = [script] + (extra_args or [])
     sys.argv = command
-    script_dir = os.path.dirname(script)
     script_path = os.path.abspath(script)
+    script_dir = os.path.dirname(script_path)
     os.chdir(script_dir)
     # Ensure relative imports (from file import func) work
     # Python normally inserts '' (the current directory) as position 0
