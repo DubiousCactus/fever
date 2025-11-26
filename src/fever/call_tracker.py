@@ -105,7 +105,7 @@ class CallTracker:
             # methods? I'll know more as I implement the rest, and I'll revisit this
             # part.
             caller_frame = sys._getframe(1)
-            caller_name = caller_frame.f_code.co_qualname
+            caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "

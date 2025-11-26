@@ -110,7 +110,10 @@ class FeverCore:
                 f"Analyzing AST for module '{module_name}'", style="blue on black"
             )
             fever_module = self._ast_analyzer.make_module_inventory(
-                module_name, module, show_ast=False
+                module_name,
+                module,
+                show_ast=False,
+                source_path=getattr(module, "__file__"),
             )
             assert fever_module.obj == module
             self.registry.add_module(module_name, fever_module)
@@ -151,9 +154,13 @@ class FeverCore:
                 FeverWarning,
             )
         assert isinstance(func.obj, object)
-        assert func.obj is not generic_function, (
-            f"on_registry_add(): function {func.name} is the generic function!"
-        )
+        if func.obj is generic_function:
+            warnings.warn(
+                f"on_registry_add(): function {func.name} is the generic "
+                + "function! Something went wrong, skipping this function.",
+                FeverWarning,
+            )
+            return
         if not isinstance(func.obj, Callable):
             warnings.warn(
                 f"Function {func.name} is not a callable! Tracking of '{func.obj.__class__}' is currently not implemented.",
@@ -179,9 +186,14 @@ class FeverCore:
                 FeverWarning,
             )
             return
-        assert method.obj is not generic_function, (
-            f"on_registry_add(): method {method.name} is the generic function!"
-        )
+        if method.obj is generic_function:
+            warnings.warn(
+                f"on_registry_add(): method {class_.name}.{method.name} is the generic "
+                + "function! Something went wrong, skipping this method.",
+                FeverWarning,
+            )
+            return
+
         setattr(
             class_.obj,
             method.name,
