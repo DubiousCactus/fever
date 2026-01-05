@@ -134,7 +134,10 @@ class DependencyTracker(MetaPathFinder, Loader):
         curdir = os.getcwd()
         path = [curdir] if path is None or path == [] else path
         name = fullname.split(".")[-1] if "." in fullname else fullname
-        if os.path.commonpath([path[0], str(curdir)]) != curdir:
+        if (
+            os.path.commonpath([os.path.abspath(path[0]), os.path.abspath(str(curdir))])
+            != curdir
+        ):
             return None
 
         for entry in path:
@@ -162,7 +165,12 @@ class DependencyTracker(MetaPathFinder, Loader):
                         )
                     if any([d in sys_path for d in self._absolute_ignore_dirs]):
                         continue
-                    if os.path.commonpath([entry, sys_path]) == entry:
+                    if (
+                        os.path.commonpath(
+                            [os.path.abspath(entry), os.path.abspath(sys_path)]
+                        )
+                        == entry
+                    ):
                         file_path, submodule_locations = find_module_path(
                             sys_path, name
                         )

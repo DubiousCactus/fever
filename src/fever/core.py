@@ -48,7 +48,7 @@ def compile_code_in_namespace(
 
 
 class FeverCore:
-    def __init__(self, rich_console: Optional[Console] = None):
+    def __init__(self, rich_console: Optional[Console] = None, with_cache: Optional[bool] = True):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
         self._console_if: ConsoleInterface = ConsoleInterface(console)
@@ -64,6 +64,7 @@ class FeverCore:
             self.registry,
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
+            with_cache=with_cache,
         )
 
     def setup(self, caller_frame: Optional[FrameType] = None):
@@ -110,7 +111,10 @@ class FeverCore:
                 f"Analyzing AST for module '{module_name}'", style="blue on black"
             )
             fever_module = self._ast_analyzer.make_module_inventory(
-                module_name, module, show_ast=False
+                module_name,
+                module,
+                show_ast=False,
+                source_path=getattr(module, "__file__"),
             )
             assert fever_module.obj == module
             self.registry.add_module(module_name, fever_module)
@@ -151,9 +155,13 @@ class FeverCore:
                 FeverWarning,
             )
         assert isinstance(func.obj, object)
-        assert func.obj is not generic_function, (
-            f"on_registry_add(): function {func.name} is the generic function!"
-        )
+        if func.obj is generic_function:
+            warnings.warn(
+                f"on_registry_add(): function {func.name} is the generic "
+                + "function! Something went wrong, skipping this function.",
+                FeverWarning,
+            )
+            return
         if not isinstance(func.obj, Callable):
             warnings.warn(
                 f"Function {func.name} is not a callable! Tracking of '{func.obj.__class__}' is currently not implemented.",
@@ -179,9 +187,14 @@ class FeverCore:
                 FeverWarning,
             )
             return
-        assert method.obj is not generic_function, (
-            f"on_registry_add(): method {method.name} is the generic function!"
-        )
+        if method.obj is generic_function:
+            warnings.warn(
+                f"on_registry_add(): method {class_.name}.{method.name} is the generic "
+                + "function! Something went wrong, skipping this method.",
+                FeverWarning,
+            )
+            return
+
         setattr(
             class_.obj,
             method.name,
@@ -222,10 +235,6 @@ class FeverCore:
                 continue
             module_obj: ModuleType = sys.modules[module_name]
             module_namespace = vars(module_obj)
-            print(
-                "new_function is wrapped? ",
-                hasattr(getattr(module_obj, "new_function", None), "__wrapped__"),
-            )
             cmp_fever_module: FeverModule = self._ast_analyzer.make_module_inventory(
                 module_name,
                 module_obj=module_obj,

@@ -5,6 +5,7 @@
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+import warnings
 
 
 class FeverWarning(Warning):
@@ -86,7 +87,15 @@ class FeverParameters:
 
         self.args = make_immutable(args)
         self.kwargs = make_immutable(kwargs)
-        self.hash = hash((self.args, self.kwargs))
+        try:
+            self.hash = hash((self.args, self.kwargs))
+        except TypeError:
+            warnings.warn(
+                f"Could not hash parameters: args={self.args}, kwargs={self.kwargs}",
+                FeverWarning,
+            )
+            self.hash = -1
+
 
     def __hash__(self) -> int:
         return self.hash
@@ -96,3 +105,7 @@ class FeverParameters:
         if len(full_str) > 30:
             full_str = full_str[:27] + "..."
         return full_str
+
+
+class FeverEntryPoint:
+    pass
