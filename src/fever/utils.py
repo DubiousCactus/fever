@@ -13,7 +13,7 @@ from rich.console import Console
 
 
 def parse_verbosity() -> int:
-    v = os.getenv("VERBOSITY", "").lower()
+    v = os.getenv("FEVER_VERBOSITY", "").lower()
     if v in ("v", "1"):
         return 1
     elif v in ("vv", "2"):

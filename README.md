@@ -78,6 +78,12 @@ but when a wrapped callable is called, we should take the hand and:
    currently active callable.
 3. hang after execution of the callable.
 
+### Dev setup
+
+To use in dev mode, you can install the plugin in dev mode within your environment, e.g.
+with uv: `uv pip install -e /path/to/fever/`.
+
+You can now run it as `uv run fever <command>`.
 
 ## Roadmap
 
