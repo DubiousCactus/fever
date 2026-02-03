@@ -113,8 +113,9 @@ class DependencyTracker(MetaPathFinder, Loader):
                 code_str = f.read()  # Read the source code
                 self._console.print("Done!", style="green on black")
             self._console.print("\t - Executing module...", style="black on white")
+            code_obj = compile(code_str, file_path, "exec")
             exec(
-                code_str, module.__dict__
+                code_obj, module.__dict__
             )  # Execute the code in the module's namespace
             self._console.print("\t - Done!", style="green on black")
             # NOTE: Our main post-load hook is to run the AST analysis and decorate all
