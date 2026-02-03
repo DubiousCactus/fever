@@ -1,3 +1,4 @@
+import importlib
 import os
 import runpy
 import sys
@@ -40,6 +41,19 @@ def watch(
     # Ensure relative imports (from file import func) work
     # Python normally inserts '' (the current directory) as position 0
     sys.path.insert(0, script_dir)
+    # NOTE: We manually import the script module so that we can track it.
+    importlib.import_module(script.split(".py")[0])
+
+    def cleanup():
+        watcher.stop()
+        if os.getenv("FEVER_PLOT_TRACE", "0").lower() in ["1", "true"]:
+            watcher.fever.plot_call_graph()
+        if os.getenv("FEVER_PLOT_DEPS", "0").lower() in ["1", "true"]:
+            watcher.fever.plot_dependency_graph()
+            print(
+                f"Dependencies tracked: {watcher.fever.dependency_tracker.all_imports}"
+            )
+
     try:
         # Option A: use the same globals as this module
         runpy.run_path(script_path, run_name="__main__")
@@ -47,12 +61,8 @@ def watch(
         # runpy.run_path(script, init_globals={"__name__": "__main__"})
     except KeyboardInterrupt:
         console.print("Terminating watcher...", style="bold red")
-    watcher.stop()
-
-    if os.getenv("FEVER_PLOT_TRACE", "0").lower() in ["1", "true"]:
-        watcher.fever.plot_call_graph()
-    if os.getenv("FEVER_PLOT_DEPS", "0").lower() in ["1", "true"]:
-        watcher.fever.plot_dependency_graph()
+    finally:
+        cleanup()
 
 
 @app.command(
