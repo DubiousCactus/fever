@@ -6,6 +6,7 @@
 # Distributed under terms of the MIT license.
 
 
+import builtins
 import importlib
 import inspect
 import os
@@ -79,8 +80,9 @@ class DependencyTracker(MetaPathFinder, Loader):
                 FeverWarning,
             )
         # NOTE: For now we don't need this hook bc we don't need the full dependency graph
-        # self._original_importer = builtins.__import__
-        # builtins.__import__ = self._import
+        if os.getenv("FEVER_PLOT_DEPS", "0").lower() in ["1", "true"]:
+            self._original_importer = builtins.__import__
+            builtins.__import__ = self._import
 
         # Insert our finder/loader as top priority:
         sys.meta_path.insert(0, self)
@@ -90,7 +92,8 @@ class DependencyTracker(MetaPathFinder, Loader):
         Remove the import hook.
         """
         self._console.print("Cleaning up the import hook", style="green on black")
-        # builtins.__import__ = self._original_importer
+        if os.getenv("FEVER_PLOT_DEPS", "0").lower() in ["1", "true"]:
+            builtins.__import__ = self._original_importer
         for finder in sys.meta_path.copy():
             if isinstance(finder, self.__class__):
                 sys.meta_path.remove(finder)
@@ -204,60 +207,60 @@ class DependencyTracker(MetaPathFinder, Loader):
 
     # NOTE: We actually don't need the module imports DAG, so this hook is disabled for
     # now. If the DAG is needed in the future, we can re-enable it.
-    # def _import(
-    #     self, name: str, globals=None, locals=None, fromlist=(), level=0
-    # ) -> ModuleType:
-    #     fromlist = fromlist or ()
-    #     module = self._original_importer(
-    #         name, globals=globals, locals=locals, fromlist=fromlist, level=level
-    #     )
-    #     path = self._user_modules.get(name, None)
-    #     if path is None:
-    #         return module
-    #
-    #     caller_module = (
-    #         (globals["__name__"], globals["__file__"])
-    #         if globals is not None
-    #         else (None, None)
-    #     )
-    #     path = (
-    #         self._user_modules.get(caller_module[0], None) if caller_module[0] else None
-    #     )
-    #     if path is None:
-    #         if self._show_skips:
-    #             self._console.print(
-    #                 f"Skipping module '{name}' imported from non-user module"
-    #                 + f"'{caller_module[0]}' defined in '{caller_module[1]}'",
-    #                 style="red on black",
-    #             )
-    #         return module
-    #
-    #     composite_name = name if len(fromlist) == 0 else name + "." + ".".join(fromlist)
-    #     self._console.print(
-    #         f"Importing '{composite_name}' "
-    #         + f"from module '{caller_module[0]}' defined in '{caller_module[1]}",
-    #         style="yellow on black",
-    #     )
-    #     if caller_module[0] is not None:
-    #         # WARN: If the composite name is module.func or module.class we
-    #         # map it to module! But ideally we dont want to reload the entire
-    #         # module, so we need a way to specify that func is in namespace module. For
-    #         # now we load the entire module because it's much simpler and it's not
-    #         # critical that we only load specific items.
-    #         # INFO: It turns out that the composite name is not given to the meta
-    #         # finder! So that means that the import function loads the entire module and
-    #         # returns only the function of interest anyway, right?
-    #         parts = composite_name.split(".")
-    #         for i, el in enumerate(parts):
-    #             if el in sys.modules:
-    #                 # Either the element is a function
-    #                 self._dep_graph.add_edge(caller_module[0], el)
-    #             elif ".".join(parts[: i + 1]) in sys.modules:
-    #                 # Or the combination is a submodule
-    #                 self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
-    #
-    #     self.fever.on_new_import(name, module)
-    #     return module
+    def _import(
+        self, name: str, globals=None, locals=None, fromlist=(), level=0
+    ) -> ModuleType:
+        fromlist = fromlist or ()
+        module = self._original_importer(
+            name, globals=globals, locals=locals, fromlist=fromlist, level=level
+        )
+        path = self._user_modules.get(name, None)
+        if path is None:
+            return module
+
+        caller_module = (
+            (globals["__name__"], globals["__file__"])
+            if globals is not None
+            else (None, None)
+        )
+        path = (
+            self._user_modules.get(caller_module[0], None) if caller_module[0] else None
+        )
+        if path is None:
+            if self._show_skips:
+                self._console.print(
+                    f"Skipping module '{name}' imported from non-user module"
+                    + f"'{caller_module[0]}' defined in '{caller_module[1]}'",
+                    style="red on black",
+                )
+            return module
+
+        composite_name = name if len(fromlist) == 0 else name + "." + ".".join(fromlist)
+        self._console.print(
+            f"Importing '{composite_name}' "
+            + f"from module '{caller_module[0]}' defined in '{caller_module[1]}",
+            style="yellow on black",
+        )
+        if caller_module[0] is not None:
+            # WARN: If the composite name is module.func or module.class we
+            # map it to module! But ideally we dont want to reload the entire
+            # module, so we need a way to specify that func is in namespace module. For
+            # now we load the entire module because it's much simpler and it's not
+            # critical that we only load specific items.
+            # INFO: It turns out that the composite name is not given to the meta
+            # finder! So that means that the import function loads the entire module and
+            # returns only the function of interest anyway, right?
+            parts = composite_name.split(".")
+            for i, el in enumerate(parts):
+                if el in sys.modules:
+                    # Either the element is a function
+                    self._dep_graph.add_edge(caller_module[0], el)
+                elif ".".join(parts[: i + 1]) in sys.modules:
+                    # Or the combination is a submodule
+                    self._dep_graph.add_edge(caller_module[0], ".".join(parts[: i + 1]))
+
+        # self.fever.on_new_import(name, module)
+        return module
 
     def get_dependencies(self, module_name: str) -> List[str]:
         """
@@ -296,12 +299,6 @@ class DependencyTracker(MetaPathFinder, Loader):
 
     def plot(self):
         from matplotlib import pyplot as plt
-
-        warnings.warn(
-            "DependencyTracker.plot(): The module imports DAG is currently disabled as it's not needed. "
-            + "The plot only shows imported module nodes.",
-            FeverWarning,
-        )
 
         plt.tight_layout()
         nx.draw_networkx(self._dep_graph, arrows=True)
