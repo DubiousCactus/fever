@@ -1,10 +1,10 @@
 import asyncio
+import pickle
 from typing import (
     Any,
     Callable,
     Dict,
     Iterable,
-    List,
     Tuple,
 )
 
@@ -20,6 +20,7 @@ from textual.widgets import (
 )
 
 from fever.core import FeverCore
+from fever.tui.widgets.call_graph import CallGraph
 from fever.types import FeverEntryPoint
 
 from .widgets.checkbox_panel import CheckboxPanel
@@ -41,16 +42,33 @@ class BuilderUI(App):
         ("R", "reload", "Hot reload (all)"),
     ]
 
-    def __init__(self, engine: FeverCore, chain: List[FeverEntryPoint]):
+    def __init__(self, engine: FeverCore, trace_path: str):
         super().__init__()
-        self._module_chain: List[FeverEntryPoint] = chain
+        # self._module_chain: List[FeverEntryPoint] = chain
         self._runner_task = None
         self._engine = engine
+        self._engine.set_on_new_call_callback(self.update_call_graph)
+        # INFO: Here's the plan: during watch phase we can export the call graph. During
+        # debug phase, we hook up fever, import main script which will have a chain
+        # reaction of monkey-patching every callable, then load the call graph. With the
+        # call graph and recorded parameters, we can then re-run the exact same trace.
+        # But we cache every result ofc. Then the user selects entry/exit nodes, and
+        # the debugger can just rerun through the set circuit. Voila.
+        # FIXME: We seem to be dealing with the same issue of pickling arbitrary call
+        # parameters. To go around this, we can skip them for now.
+        self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
 
+    def _load_trace(self, path: str):
+        # NOTE: For now let's use pickle, but I'll use blosc2 for compression.
+        with open(path, "rb") as f:
+            return pickle.load(f)
+
     async def on_mount(self):
-        await self._chain_up()
-        self.run_chain()
+        # await self._chain_up()
+        # self.run_chain()
+        # runpy.run_path(self.script, run_name="__main__")
+        pass
 
     async def _chain_up(self) -> None:
         """
@@ -84,23 +102,26 @@ class BuilderUI(App):
         self.log_tracer("Running the chain...")
         if len(self._module_chain) == 0:
             self.log_tracer(Text("The chain is empty!", style="bold red"))
-        for module in self._module_chain:
-            await self.query_one(LocalsPanel).clear()
-            self.query_one(Tracer).clear()
-            if module.is_frozen:
-                self.log_tracer(Text(f"Skipping frozen module {module}", style="green"))
-                continue
-            if module.to_reload or not self._reload_on_throw_only:
-                self.log_tracer(Text(f"Reloading module: {module}", style="yellow"))
-                await self._engine.reload_module(module)
-            self.log_tracer(Text(f"Running module: {module}", style="yellow"))
-            module.result = await self._engine.catch_and_hang(
-                module, self._module_chain
-            )
-            self.log_tracer(Text(f"{module} ran sucessfully!", style="bold green"))
-            self.print_info("Hanged.")
-            self.query_one("#traceback", RichLog).clear()
-            await self.hang(threw=False)
+        # TODO: Figure out how to call functions from the call graph! Right now they are
+        # just text :( We probably need to also know which module they're from!
+        #
+        # for module in self._module_chain:
+        #     await self.query_one(LocalsPanel).clear()
+        #     self.query_one(Tracer).clear()
+        #     if module.is_frozen:
+        #         self.log_tracer(Text(f"Skipping frozen module {module}", style="green"))
+        #         continue
+        #     if module.to_reload or not self._reload_on_throw_only:
+        #         self.log_tracer(Text(f"Reloading module: {module}", style="yellow"))
+        #         await self._engine.reload_module(module)
+        #     self.log_tracer(Text(f"Running module: {module}", style="yellow"))
+        #     module.result = await self._engine.catch_and_hang(
+        #         module, self._module_chain
+        #     )
+        #     self.log_tracer(Text(f"{module} ran sucessfully!", style="bold green"))
+        #     self.print_info("Hanged.")
+        #     self.query_one("#traceback", RichLog).clear()
+        #     await self.hang(threw=False)
 
     def run_chain(self) -> None:
         """
@@ -118,7 +139,7 @@ class BuilderUI(App):
         checkboxes = CheckboxPanel(classes="box")
         checkboxes.loading = True
         yield checkboxes
-        yield CodeEditor(classes="box", id="code")
+        yield CallGraph(self._call_graph, classes="box", id="graph")
         logs = Logger(classes="box", id="logger")
         logs.border_title = "User logs"
         logs.styles.border = ("solid", "gray")
@@ -139,13 +160,16 @@ class BuilderUI(App):
         yield traceback
         yield Footer()
 
+    def update_call_graph(self, k: object, v: object) -> None:
+        self.query_one(CallGraph).update(k, v)
+
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
         self.log_tracer("Reloading hot code...")
         self.query_one(CheckboxPanel).ready()
         self.query_one(Tracer).ready()
         # self.query_one(CheckboxPanel).hang(threw)
-        self.query_one(CodeEditor).ready()
+        # self.query_one(CodeEditor).ready()
         self.run_chain()
 
     def action_reload(self) -> None:

@@ -45,6 +45,7 @@ def watch(
     importlib.import_module(script.split(".py")[0])
 
     def cleanup():
+        watcher.fever.export_trace("program_trace.pkl")
         watcher.stop()
         if os.getenv("FEVER_PLOT_TRACE", "0").lower() in ["1", "true"]:
             watcher.fever.plot_call_graph()
@@ -75,9 +76,25 @@ def debug(
     """
     Debug a program with the TUI.
     """
+    save_file = "program_trace.pkl"
+    if not os.path.isfile(save_file):
+        raise FileNotFoundError(
+            f"{save_file} not found. Please run the script with 'watch' command first to generate the program trace."
+        )
     fever_engine = FeverCore()
     fever_engine.setup()
-    BuilderUI(fever_engine, []).run()
+    command = [script] + (extra_args or [])
+    sys.argv = command
+    script_path = os.path.abspath(script)
+    script_dir = os.path.dirname(script_path)
+    os.chdir(script_dir)
+    # Ensure relative imports (from file import func) work
+    # Python normally inserts '' (the current directory) as position 0
+    sys.path.insert(0, script_dir)
+    # NOTE: We manually import the script module so that we can track it.
+    importlib.import_module(script.split(".py")[0])
+
+    BuilderUI(fever_engine, save_file).run()
     fever_engine.cleanup()
 
 

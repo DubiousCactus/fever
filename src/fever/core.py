@@ -1,3 +1,4 @@
+import pickle
 import sys
 import warnings
 from types import FrameType, ModuleType
@@ -48,7 +49,12 @@ def compile_code_in_namespace(
 
 
 class FeverCore:
-    def __init__(self, rich_console: Optional[Console] = None, with_cache: Optional[bool] = True):
+    def __init__(
+        self,
+        rich_console: Optional[Console] = None,
+        with_cache: Optional[bool] = True,
+        on_new_call: Callable[[object, object], None] = lambda k, v: None,
+    ):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
         self._console_if: ConsoleInterface = ConsoleInterface(console)
@@ -65,6 +71,7 @@ class FeverCore:
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
             with_cache=with_cache,
+            on_new_call=on_new_call,
         )
 
     def setup(self, caller_frame: Optional[FrameType] = None):
@@ -402,3 +409,12 @@ class FeverCore:
         """
         _ = entry_point
         raise NotImplementedError
+
+    def set_on_new_call_callback(
+        self, callback: Callable[[object, object], None]
+    ) -> None:
+        self._call_tracker._on_new_call = callback
+
+    def export_trace(self, path: str) -> None:
+        with open(path, "wb") as f:
+            pickle.dump(self._call_tracker.single_edge_call_graph, f)

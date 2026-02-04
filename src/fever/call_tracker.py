@@ -79,12 +79,16 @@ class CallTracker:
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
         with_cache: bool,
+        on_new_call: Callable[[object, object], None] = lambda k, v: None,
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
-        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache)
+        self._cache = Cache(
+            console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache
+        )
+        self._on_new_call: Callable[[object, object], None] = on_new_call
 
     def track_calls(
         self,
@@ -163,6 +167,7 @@ class CallTracker:
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
             self._cache.set(func_ptr, params, edge_data, result)
+            self._on_new_call(k, v)
             return result
 
         return fever_wrapper
@@ -205,3 +210,26 @@ class CallTracker:
         )
         plt.tight_layout()
         plt.show()
+
+    @property
+    def single_edge_call_graph(self) -> nx.DiGraph:
+        """
+        Return a simplified version of the call graph where multiple edges between
+        the same nodes are merged into a single edge. The edge attributes are aggregated
+        by summing the cumulative time and calls, and averaging the weight.
+        """
+        G = nx.DiGraph()
+        for u, v, data in self._call_graph.edges(data=True):
+            if G.has_edge(u, v):
+                G[u][v]["cum_time"] += data["cum_time"]
+                G[u][v]["calls"] += data["calls"]
+                G[u][v]["weight"] = G[u][v]["cum_time"] / G[u][v]["calls"]
+            else:
+                G.add_edge(
+                    u,
+                    v,
+                    cum_time=data["cum_time"],
+                    calls=data["calls"],
+                    weight=data["weight"],
+                )
+        return G
