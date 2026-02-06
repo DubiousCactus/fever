@@ -35,6 +35,13 @@ class CallGraph(Static):
         self.query_one(GraphView).add_edge(k, v)
         self.ready()
 
+    def hilight(self, k: object) -> None:
+        # TODO:Update style of specific node
+        # self.query_one(GraphView).update(k)
+        # for u, v in self.graph.edges():
+        # self.ready()
+        pass
+
     def on_mount(self):
         self.ready()
         # self.loading = True

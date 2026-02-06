@@ -1,5 +1,6 @@
 import pickle
 import sys
+import threading
 import warnings
 from types import FrameType, ModuleType
 from typing import Callable, Dict, Optional
@@ -411,7 +412,7 @@ class FeverCore:
         raise NotImplementedError
 
     def set_on_new_call_callback(
-        self, callback: Callable[[object, object], None]
+        self, callback: Callable[[threading.Event, object, object], None]
     ) -> None:
         self._call_tracker._on_new_call = callback
 

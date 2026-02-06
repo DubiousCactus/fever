@@ -1,10 +1,14 @@
 import asyncio
+import logging
 import pickle
+import runpy
+import threading
 from typing import (
     Any,
     Callable,
     Dict,
     Iterable,
+    List,
     Tuple,
 )
 
@@ -30,6 +34,21 @@ from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
 from .widgets.tracer import Tracer
 
+# logging.basicConfig(
+#     level=logging.DEBUG,
+#     handlers=[RichHandler()],
+# )
+#
+
+logging.basicConfig(
+    filename="fever_debug.log",
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+
+log = logging.getLogger("fever")
+log.debug("Engine initialized")
+
 
 class BuilderUI(App):
     TITLE = "Fever Builder TUI"
@@ -42,22 +61,26 @@ class BuilderUI(App):
         ("R", "reload", "Hot reload (all)"),
     ]
 
-    def __init__(self, engine: FeverCore, trace_path: str):
+    def __init__(self, engine: FeverCore, script_path: str, trace_path: str):
         super().__init__()
-        # self._module_chain: List[FeverEntryPoint] = chain
+        self._module_chain: List[FeverEntryPoint] = []
         self._runner_task = None
         self._engine = engine
-        self._engine.set_on_new_call_callback(self.update_call_graph)
+        self._engine.set_on_new_call_callback(self.tracker_callback)
         # INFO: Here's the plan: during watch phase we can export the call graph. During
         # debug phase, we hook up fever, import main script which will have a chain
         # reaction of monkey-patching every callable, then load the call graph. With the
         # call graph and recorded parameters, we can then re-run the exact same trace.
         # But we cache every result ofc. Then the user selects entry/exit nodes, and
         # the debugger can just rerun through the set circuit. Voila.
+        self._script_path = script_path
         # FIXME: We seem to be dealing with the same issue of pickling arbitrary call
         # parameters. To go around this, we can skip them for now.
         self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
+        log.debug(
+            f"BuilderUI initialized with script_path={script_path} and trace_path={trace_path}"
+        )
 
     def _load_trace(self, path: str):
         # NOTE: For now let's use pickle, but I'll use blosc2 for compression.
@@ -100,11 +123,26 @@ class BuilderUI(App):
         modules will be reloaded and re-executed.
         """
         self.log_tracer("Running the chain...")
+        log.debug("Starting to run the chain of modules...")
         if len(self._module_chain) == 0:
             self.log_tracer(Text("The chain is empty!", style="bold red"))
         # TODO: Figure out how to call functions from the call graph! Right now they are
         # just text :( We probably need to also know which module they're from!
-        #
+        # TODO: To run a script we should use runpy.run_path; it's the most robust and
+        # safest way to run a script as __main__. But how can we use runpy such that it
+        # does not mess with the main thread?
+        self.log_tracer(Text(f"Running {self._script_path}...", style="yellow"))
+        log.debug(f"Running script at path: {self._script_path}")
+        await asyncio.to_thread(
+            runpy.run_path,
+            self._script_path,
+            run_name="__main__",
+        )
+        log.debug("Script run completed.")
+        # TODO: Now how do stop at the exit node, and how do we restart from the start
+        # node?
+        # TODO: Make sure that run_path uses the monkey-patched modules!
+
         # for module in self._module_chain:
         #     await self.query_one(LocalsPanel).clear()
         #     self.query_one(Tracer).clear()
@@ -160,8 +198,16 @@ class BuilderUI(App):
         yield traceback
         yield Footer()
 
-    def update_call_graph(self, k: object, v: object) -> None:
-        self.query_one(CallGraph).update(k, v)
+    def tracker_callback(
+        self, resume_event: threading.Event, k: object, v: object
+    ) -> None:
+        self.log_tracer(f"CALL: {k} -> {v}")
+        log.debug(f"Tracker callback called with k={k}, v={v}")
+        if v == "compute_footprints_by_differentials_DEBUG":
+            self.log_tracer(f"Hanging on {v}...")
+            resume_event.wait()
+            self.query_one(CallGraph).highlight(v)
+            self.hang(False)
 
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
@@ -218,15 +264,13 @@ class BuilderUI(App):
         self.query_one(LocalsPanel).set_frame_name(frame_name)
         await self.query_one(LocalsPanel).add_locals(locals)
 
-    async def hang(self, threw: bool) -> None:
+    def hang(self, threw: bool) -> None:
         """
         Give visual signal that the builder is hung, either due to an exception or
         because the function ran successfully.
         """
         self.query_one(Tracer).hang(threw)
         self.query_one(CodeEditor).hang(threw)
-        while self.is_running:
-            await asyncio.sleep(1)
 
     def print_err(self, msg: str | Exception) -> None:
         self.log_tracer(

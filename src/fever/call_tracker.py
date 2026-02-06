@@ -5,6 +5,7 @@
 
 import enum
 import sys
+import threading
 import timeit
 import warnings
 from functools import wraps
@@ -79,7 +80,9 @@ class CallTracker:
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
         with_cache: bool,
-        on_new_call: Callable[[object, object], None] = lambda k, v: None,
+        on_new_call: Callable[[threading.Event, object, object], None] = (
+            lambda e, k, v: None
+        ),
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
@@ -88,7 +91,10 @@ class CallTracker:
         self._cache = Cache(
             console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache
         )
-        self._on_new_call: Callable[[object, object], None] = on_new_call
+        self._on_new_call: Callable[[threading.Event, object, object], None] = (
+            on_new_call
+        )
+        self._resume_event = threading.Event()
 
     def track_calls(
         self,
@@ -112,6 +118,7 @@ class CallTracker:
             # as my caller/callee objects. Function addresses? Class instances? Bounded
             # methods? I'll know more as I implement the rest, and I'll revisit this
             # part.
+            self._resume_event.clear()
             caller_frame = sys._getframe(1)
             caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
@@ -167,7 +174,7 @@ class CallTracker:
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
             self._cache.set(func_ptr, params, edge_data, result)
-            self._on_new_call(k, v)
+            self._on_new_call(self._resume_event, k, v)
             return result
 
         return fever_wrapper

@@ -94,7 +94,7 @@ def debug(
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
 
-    BuilderUI(fever_engine, save_file).run()
+    BuilderUI(fever_engine, script_path, save_file).run()
     fever_engine.cleanup()
 
 
