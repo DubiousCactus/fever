@@ -3,7 +3,7 @@ import sys
 import threading
 import warnings
 from types import FrameType, ModuleType
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 from uuid import UUID
 
 from rich.console import Console
@@ -55,6 +55,9 @@ class FeverCore:
         rich_console: Optional[Console] = None,
         cache_size: Optional[str] = "1MB",
         on_new_call: Callable[[object, object], None] = lambda k, v: None,
+        on_exception: Callable[[Any, str, Any], None] = (
+            lambda frame, event, arg: None
+        ),
     ):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
@@ -73,6 +76,7 @@ class FeverCore:
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
             cache_size=cache_size,
             on_new_call=on_new_call,
+            on_exception=on_exception,
         )
 
     def setup(self, caller_frame: Optional[FrameType] = None):
@@ -415,6 +419,9 @@ class FeverCore:
         self, callback: Callable[[threading.Event, object, object], None]
     ) -> None:
         self._call_tracker._on_new_call = callback
+
+    def set_on_exception_callback(self, callback: Callable[[Any, Any], None]) -> None:
+        self._call_tracker._on_exception = callback
 
     def export_trace(self, path: str) -> None:
         with open(path, "wb") as f:

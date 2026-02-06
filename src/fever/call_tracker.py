@@ -10,7 +10,7 @@ import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import networkx as nx
 
@@ -83,6 +83,7 @@ class CallTracker:
         on_new_call: Callable[[threading.Event, object, object], None] = (
             lambda e, k, v: None
         ),
+        on_exception: Callable[[Any, Any], None] = (lambda frame, exception: None),
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
@@ -97,6 +98,7 @@ class CallTracker:
         self._on_new_call: Callable[[threading.Event, object, object], None] = (
             on_new_call
         )
+        self._on_exception: Callable[[Any, Any], None] = on_exception
         self._resume_event = threading.Event()
 
     def track_calls(
@@ -162,7 +164,12 @@ class CallTracker:
                 )
                 return cached_result
             start = timeit.default_timer()
-            result = func_ptr(*args, **kwargs)
+            try:
+                result = func_ptr(*args, **kwargs)
+            except Exception as e:
+                self._on_exception(sys._getframe(), e)
+                sys.exit(0)
+
             end = timeit.default_timer()
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might

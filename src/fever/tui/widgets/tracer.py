@@ -4,6 +4,7 @@ from textual.widgets import RichLog, Static
 
 
 class Tracer(Static):
+    # TODO: Add file logging here
     def compose(self) -> ComposeResult:
         yield RichLog()
 

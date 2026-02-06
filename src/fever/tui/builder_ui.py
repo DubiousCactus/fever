@@ -67,6 +67,7 @@ class BuilderUI(App):
         self._runner_task = None
         self._engine = engine
         self._engine.set_on_new_call_callback(self.tracker_callback)
+        self._engine.set_on_exception_callback(self.exception_callback)
         # INFO: Here's the plan: during watch phase we can export the call graph. During
         # debug phase, we hook up fever, import main script which will have a chain
         # reaction of monkey-patching every callable, then load the call graph. With the
@@ -126,22 +127,17 @@ class BuilderUI(App):
         log.debug("Starting to run the chain of modules...")
         if len(self._module_chain) == 0:
             self.log_tracer(Text("The chain is empty!", style="bold red"))
-        # TODO: Figure out how to call functions from the call graph! Right now they are
-        # just text :( We probably need to also know which module they're from!
-        # TODO: To run a script we should use runpy.run_path; it's the most robust and
-        # safest way to run a script as __main__. But how can we use runpy such that it
-        # does not mess with the main thread?
         self.log_tracer(Text(f"Running {self._script_path}...", style="yellow"))
         log.debug(f"Running script at path: {self._script_path}")
+        # NOTE: The user script runs in a separate thread, allowing to keep the UI async
+        # and responsive. But in addition, it allows us to use threading events to
+        # coordinate hanging and resuming execution, which is neat.
         await asyncio.to_thread(
             runpy.run_path,
             self._script_path,
             run_name="__main__",
         )
         log.debug("Script run completed.")
-        # TODO: Now how do stop at the exit node, and how do we restart from the start
-        # node?
-        # TODO: Make sure that run_path uses the monkey-patched modules!
 
         # for module in self._module_chain:
         #     await self.query_one(LocalsPanel).clear()
@@ -208,6 +204,15 @@ class BuilderUI(App):
             resume_event.wait()
             self.query_one(CallGraph).highlight(v)
             self.hang(False)
+
+    def exception_callback(self, frame: Any, exception: Any) -> None:
+        # FIXME: Somehow, exceptions aren't being caught. Is Textual or rich
+        # intercepting them?? Fuck it, I can catch it myself. no need for settrace()!
+        log.debug(f"Exception callback called with frame={frame},  arg={exception}")
+        self.log_tracer(Text(f"EXCEPTION: {exception}", style="bold red"))
+        log.debug(f"Exception callback called with exception: {exception}")
+        # self.query_one("#traceback", RichLog).write_exception(exception)
+        self.hang(True)
 
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
