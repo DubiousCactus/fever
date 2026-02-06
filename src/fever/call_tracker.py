@@ -79,7 +79,7 @@ class CallTracker:
         registry: Registry,
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
-        with_cache: bool,
+        cache_size: Optional[str] = "1MB",
         on_new_call: Callable[[threading.Event, object, object], None] = (
             lambda e, k, v: None
         ),
@@ -89,7 +89,10 @@ class CallTracker:
         self._registry = registry
         self._tracking_mode = tracking_mode
         self._cache = Cache(
-            console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache
+            console,
+            cache_size or "0B",
+            ParamWiseLRUEvictionPolicy(),
+            enabled=cache_size is not None,
         )
         self._on_new_call: Callable[[threading.Event, object, object], None] = (
             on_new_call

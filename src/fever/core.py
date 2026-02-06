@@ -53,7 +53,7 @@ class FeverCore:
     def __init__(
         self,
         rich_console: Optional[Console] = None,
-        with_cache: Optional[bool] = True,
+        cache_size: Optional[str] = "1MB",
         on_new_call: Callable[[object, object], None] = lambda k, v: None,
     ):
         self._verbosity = parse_verbosity()
@@ -71,7 +71,7 @@ class FeverCore:
             self.registry,
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
-            with_cache=with_cache,
+            cache_size=cache_size,
             on_new_call=on_new_call,
         )
 

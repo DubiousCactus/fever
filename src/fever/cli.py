@@ -81,7 +81,9 @@ def debug(
         raise FileNotFoundError(
             f"{save_file} not found. Please run the script with 'watch' command first to generate the program trace."
         )
-    fever_engine = FeverCore()
+    fever_engine = FeverCore(
+        cache_size="1GB"
+    )  # TODO: Unlimited cache with disk swapping
     fever_engine.setup()
     command = [script] + (extra_args or [])
     sys.argv = command

@@ -17,7 +17,9 @@ from .types import (
 
 
 def parse_mem_limit(mem_limit: str) -> int:
-    if mem_limit.lower().endswith("kb"):
+    if mem_limit.lower().endswith("b"):
+        return int(mem_limit[:-2])
+    elif mem_limit.lower().endswith("kb"):
         return int(mem_limit[:-2]) * 1024
     elif mem_limit.lower().endswith("mb"):
         return int(mem_limit[:-2]) * 1024 * 1024
@@ -125,12 +127,13 @@ class Cache:
         eviction_policy: EvictionPolicy,
         min_calls_threshold: int = 2,
         min_time_s_threhsold: float = 0.1,
-        enabled: bool = True
+        enabled: bool = True,
     ) -> None:
         self._console = console
         self._entries: Dict[object, Dict[int, Any]] = defaultdict(dict)
         self._stats: Dict[object, Dict[int, Any]] = defaultdict(dict)
-        self.mem_limit_human = mem_limit
+        # TODO: Handle disk swapping
+        self.mem_limit_human = mem_limit  # TODO: Handle unlimited (-1?)
         self._mem_limit_bytes = parse_mem_limit(mem_limit)
         self._min_calls_threshold = min_calls_threshold
         self._min_time_threhsold = min_time_s_threhsold
@@ -155,7 +158,7 @@ class Cache:
         result: Any,
     ) -> None:
         if not self._enabled:
-            return 
+            return
         if (
             statistics.get("calls", 0) >= self._min_calls_threshold
             and statistics.get("weight", 0) >= self._min_time_threhsold
