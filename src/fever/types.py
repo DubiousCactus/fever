@@ -3,9 +3,10 @@
 #
 # Distributed under terms of the MIT license.
 
+import warnings
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-import warnings
 
 
 class FeverWarning(Warning):
@@ -96,7 +97,6 @@ class FeverParameters:
             )
             self.hash = -1
 
-
     def __hash__(self) -> int:
         return self.hash
 
@@ -105,6 +105,18 @@ class FeverParameters:
         if len(full_str) > 30:
             full_str = full_str[:27] + "..."
         return full_str
+
+    def __len__(self) -> int:
+        args_len = 1
+        if isinstance(self.args, Iterable):
+            args_len = len(self.args)
+        kwargs_len = len(self.kwargs_dict)
+        return args_len + kwargs_len
+
+    @property
+    def kwargs_dict(self) -> Dict:
+        assert isinstance(self.kwargs, frozenset)
+        return {x: i for i, s in enumerate(self.kwargs) for x in s}
 
 
 class FeverEntryPoint:

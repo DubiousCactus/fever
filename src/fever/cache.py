@@ -175,9 +175,8 @@ class Cache:
             statistics.get("calls", 0) >= self._min_calls_threshold
             and statistics.get("weight", 0) >= self._min_time_threhsold
         ):
-            log.debug("Caching result...")
+            log.debug(f"Caching result and params for {function}...")
             self._entries[function][params.hash] = result
-            self._stats[function][params.hash] = statistics
             self._eviction_policy.update_entry(function, params.hash)
             if asizeof.asizeof(self._entries) > self._mem_limit_bytes:
                 self._console.print(

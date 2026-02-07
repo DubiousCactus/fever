@@ -6,8 +6,10 @@
 # Distributed under terms of the MIT license.
 
 
+import logging
+import sys
 from collections import defaultdict
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from fever.ast_analysis import (
     FeverClass,
@@ -17,6 +19,9 @@ from fever.ast_analysis import (
     GenericClass,
     generic_function,
 )
+from fever.types import FeverParameters
+
+log = logging.getLogger("fever-registry")
 
 
 class Registry:
@@ -137,3 +142,9 @@ class Registry:
             self._add_class_code_pointer(module_name, cls_)
             for method in module.methods[cls_]:
                 self._add_method_code_pointer(module_name, cls_, method)
+
+    def invoke(self, module_name: str, func_name: str, params: FeverParameters) -> Any:
+        log.debug(f"invoking {func_name} with {len(params)} args")
+        return getattr(sys.modules[module_name], func_name)(
+            *params.args, **params.kwargs_dict
+        )

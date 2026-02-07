@@ -11,7 +11,7 @@ import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Any, Callable, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 import networkx as nx
 
@@ -88,7 +88,7 @@ class CallTracker:
         on_new_call: Callable[[threading.Event, object, object], None] = (
             lambda e, k, v: None
         ),
-        on_exception: Callable[[FrameType, str, Any], Any] = (lambda f, e, a: None),
+        on_exception: Callable[[threading.Event], Any] = (lambda e: None),
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
@@ -98,7 +98,7 @@ class CallTracker:
         self._on_new_call: Callable[[threading.Event, object, object], None] = (
             on_new_call
         )
-        self._on_exception: Callable[[FrameType, str, Any], Any] = on_exception
+        self._on_exception: Callable[[threading.Event], Any] = on_exception
         self._resume_event = threading.Event()
 
     def track_calls(
@@ -157,22 +157,26 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
-            if cached_result := self._cache.get(func_ptr, params):
-                self._console.print(
-                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
-                    style="yellow on black",
-                )
-                print("hitting cache")
-                log.debug(
-                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
-                )
-                return cached_result
-            start = timeit.default_timer()
+            self._on_new_call(self._resume_event, k, v)
+            # FIXME: Disabling the cache allows to re-run the graph from entry to exit
+            # nodes because it executes the function. If we use the cache, there's no
+            # execution, preventing further calls to be executed. We need to use the
+            # cache, then emulate further calls as they are recorded in our call graph.
+            # if cached_result := self._cache.get(func_ptr, params):
+            #     self._console.print(
+            #         f"Cache hit for callable '{callable_full_name}' with params: {params}",
+            #         style="yellow on black",
+            #     )
+            #     print("hitting cache")
+            #     log.debug(
+            #         f"Cache hit for callable '{callable_full_name}' with params: {params}",
+            #     )
+            #     return cached_result
             sys.settrace(self._on_exception(self._resume_event))
+            start = timeit.default_timer()
             result = func_ptr(*args, **kwargs)
-            sys.settrace(None)
-
             end = timeit.default_timer()
+            sys.settrace(None)
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
             # want the caller to be the function name instead of the pointer, so we
@@ -190,7 +194,6 @@ class CallTracker:
             )
             log.debug(f"Cache entries: {len(self._cache._entries)}")
             self._cache.set(func_ptr, params, edge_data, result)
-            self._on_new_call(self._resume_event, k, v)
             return result
 
         return fever_wrapper
@@ -256,3 +259,25 @@ class CallTracker:
                     weight=data["weight"],
                 )
         return G
+
+    def get_function_calls(
+        self, func: FeverFunction
+    ) -> List[Tuple[object | str, FeverParameters]]:
+        """
+        Return the list of calls as a list of tuples (caller, List[FeverParameters]) for given function.
+        """
+        if self._tracking_mode == TrackingMode.KV_POINTERS:
+            k = func.obj
+        elif self._tracking_mode == TrackingMode.KV_NAMES:
+            k = func.name
+        else:
+            raise NotImplementedError(
+                f"Tracking mode {self._tracking_mode} not implemented."
+            )
+        if k not in self._call_graph:
+            return []
+        params = []
+        for u, v, data in self._call_graph.edges(data=True):
+            if v == k:
+                params.append((u, data["params"]))
+        return params

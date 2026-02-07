@@ -2,7 +2,9 @@ import asyncio
 import logging
 import pickle
 import runpy
+import sys
 import threading
+from collections import namedtuple
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_stack
 from types import FrameType
@@ -20,7 +22,6 @@ from rich.pretty import Pretty
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.widgets import (
-    Checkbox,
     Footer,
     Header,
     RichLog,
@@ -50,6 +51,8 @@ logging.basicConfig(
 
 log = logging.getLogger("fever")
 log.debug("Engine initialized")
+
+Node = namedtuple("Node", ["module", "name"])
 
 
 class BuilderUI(App):
@@ -82,6 +85,11 @@ class BuilderUI(App):
         # parameters. To go around this, we can skip them for now.
         self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
+        self._entry_node, self._exit_node = (
+            Node("footprinting", "compute_footprints_by_differentials_DEBUG"),
+            Node("footprinting", "test"),
+        )
+        self._has_run = False
         log.debug(
             f"BuilderUI initialized with script_path={script_path} and trace_path={trace_path}"
         )
@@ -97,20 +105,20 @@ class BuilderUI(App):
         # runpy.run_path(self.script, run_name="__main__")
         pass
 
-    async def _chain_up(self) -> None:
-        """
-        Prepare the UI by adding checkboxes for each module in the chain.
-        """
-        keys = []
-        for module in self._module_chain:
-            if not isinstance(module, FeverEntryPoint):
-                self.exit(1)
-                raise TypeError(f"Expected FeverEntryPoint, got {type(module)}")
-            await self.query_one(CheckboxPanel).add_checkbox(str(module), module.uid)
-            if module.uid in keys:
-                raise ValueError(f"Duplicate module '{module}' with uid {module.uid}")
-            keys.append(module.uid)
-        self.query_one(CheckboxPanel).ready()
+    # async def _chain_up(self) -> None:
+    #     """
+    #     Prepare the UI by adding checkboxes for each module in the chain.
+    #     """
+    #     keys = []
+    #     for module in self._module_chain:
+    #         if not isinstance(module, FeverEntryPoint):
+    #             self.exit(1)
+    #             raise TypeError(f"Expected FeverEntryPoint, got {type(module)}")
+    #         await self.query_one(CheckboxPanel).add_checkbox(str(module), module.uid)
+    #         if module.uid in keys:
+    #             raise ValueError(f"Duplicate module '{module}' with uid {module.uid}")
+    #         keys.append(module.uid)
+    #     self.query_one(CheckboxPanel).ready()
 
     async def _run_chain(self) -> None:
         """
@@ -135,11 +143,34 @@ class BuilderUI(App):
         # NOTE: The user script runs in a separate thread, allowing to keep the UI async
         # and responsive. But in addition, it allows us to use threading events to
         # coordinate hanging and resuming execution, which is neat.
-        await asyncio.to_thread(
-            runpy.run_path,
-            self._script_path,
-            run_name="__main__",
-        )
+        # the registry with those parameters.
+        if not self._has_run:
+            # NOTE: Compute a part of the path untll end node, and fill up the cache.
+            self._has_run = True
+            await asyncio.to_thread(
+                runpy.run_path,
+                self._script_path,
+                run_name="__main__",
+            )
+        else:
+            # NOTE: The cache should be filled up to end node, we can just call entry node
+            # with cached parameters, and it will run through to end node.
+            self.log_tracer(
+                f"Second run: running with cached results from {self._entry_node} to {self._exit_node}..."
+            )
+            params = await asyncio.to_thread(
+                self._engine.get_cached_params,
+                self._entry_node.module,
+                self._entry_node.name,
+            )
+            # Use the first cached params for now, ignore the caller:
+            params = params[0][1]
+            await asyncio.to_thread(
+                self._engine.registry.invoke,
+                self._entry_node.module,
+                self._entry_node.name,
+                params,
+            )
         log.debug("Script run completed.")
 
         # for module in self._module_chain:
@@ -200,9 +231,10 @@ class BuilderUI(App):
     def tracker_callback(
         self, resume_event: threading.Event, k: object, v: object
     ) -> None:
+        sys.settrace(None)
         self.log_tracer(f"CALL: {k} -> {v}")
         log.debug(f"Tracker callback called with k={k}, v={v}")
-        if v == "compute_footprints_by_differentials_DEBUG":
+        if v == self._exit_node.name:
             self.log_tracer(f"Hanging on {v}...")
             resume_event.wait()
             # self.query_one(CallGraph).highlight(v)
@@ -269,11 +301,11 @@ class BuilderUI(App):
         self._reload_on_throw_only = True
         self._reload()
 
-    def on_checkbox_changed(self, message: Checkbox.Changed):
-        assert message.checkbox.id is not None
-        for module in self._module_chain:
-            if module.uid == message.checkbox.id:
-                module.is_frozen = bool(message.value)
+    # def on_checkbox_changed(self, message: Checkbox.Changed):
+    #     assert message.checkbox.id is not None
+    #     for module in self._module_chain:
+    #         if module.uid == message.checkbox.id:
+    #             module.is_frozen = bool(message.value)
 
     def set_start_epoch(self, *args, **kwargs):
         _ = args

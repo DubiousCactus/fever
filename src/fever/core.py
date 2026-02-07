@@ -1,9 +1,10 @@
+import logging
 import pickle
 import sys
 import threading
 import warnings
 from types import FrameType, ModuleType
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from rich.console import Console
@@ -17,8 +18,10 @@ from fever.registry import Registry
 
 from .call_tracker import CallTracker, TrackingMode
 from .dependency_tracker import DependencyTracker
-from .types import FeverClass, FeverFunction, FeverModule, FeverWarning
+from .types import FeverClass, FeverFunction, FeverModule, FeverParameters, FeverWarning
 from .utils import ConsoleInterface, parse_verbosity
+
+log = logging.getLogger("fever-core")
 
 
 def compile_code_in_namespace(
@@ -67,6 +70,7 @@ class FeverCore:
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
             self.on_module_load,
         )
+        self._cache = cache
         self._call_tracker: CallTracker = CallTracker(
             self.registry,
             TrackingMode.KV_NAMES,
@@ -416,10 +420,26 @@ class FeverCore:
         self._call_tracker._on_new_call = callback
 
     def set_on_exception_callback(
-        self, callback: Callable[[FrameType, str, Any], Any]
+        self,
+        callback: Callable[[threading.Event], Any],
     ) -> None:
         self._call_tracker._on_exception = callback
 
     def export_trace(self, path: str) -> None:
         with open(path, "wb") as f:
             pickle.dump(self._call_tracker.single_edge_call_graph, f)
+
+    def get_cached_params(
+        self, module_name: str, func_name: str
+    ) -> List[Tuple[object | str, FeverParameters]]:
+        # if self._cache is None:
+        #     raise RuntimeError("Cache is not enabled.")
+        if func := self.registry.find_function_by_name(func_name, module_name):
+            log.debug(
+                f"Found {func_name} in registry for module {module_name}: {func.obj}"
+            )
+        else:
+            raise RuntimeError(
+                f"Function '{func_name}' not found in registry for module '{module_name}'"
+            )
+        return self._call_tracker.get_function_calls(func)
