@@ -8,6 +8,8 @@ import typer
 from rich.console import Console
 from typing_extensions import Annotated
 
+from fever.cache import Cache
+
 from .core import FeverCore
 from .tui.builder_ui import BuilderUI
 from .watcher import FeverWatcher
@@ -31,7 +33,17 @@ def watch(
         f"Watching script: {script} " + ("with caching" if not no_cache else ""),
         style="bold green",
     )
-    watcher = FeverWatcher(rich_console=console, with_cache=not no_cache)
+    watcher = FeverWatcher(
+        rich_console=console,
+        cache=None
+        if no_cache
+        else Cache(
+            console=console,
+            mem_limit="100M",
+            min_calls_threshold=1,
+            min_time_s_threshold=0.1,
+        ),
+    )
     watcher.watch()
     command = [script] + (extra_args or [])
     sys.argv = command
@@ -82,7 +94,13 @@ def debug(
             f"{save_file} not found. Please run the script with 'watch' command first to generate the program trace."
         )
     fever_engine = FeverCore(
-        cache_size="1GB"
+        rich_console=console,
+        cache=Cache(
+            console=console,
+            mem_limit="1GB",
+            min_calls_threshold=0,
+            min_time_s_threshold=0,
+        ),
     )  # TODO: Unlimited cache with disk swapping
     fever_engine.setup()
     command = [script] + (extra_args or [])

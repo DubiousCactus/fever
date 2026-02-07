@@ -7,6 +7,7 @@ from typing import Optional
 import pywatchman
 from rich.console import Console
 
+from fever.cache import Cache
 from fever.utils import ConsoleInterface, parse_verbosity
 
 from .core import FeverCore
@@ -14,14 +15,16 @@ from .core import FeverCore
 
 class FeverWatcher:
     def __init__(
-        self, rich_console: Optional[Console] = None, root_dir: Optional[str] = None,
-        with_cache: Optional[bool] = True,
+        self,
+        rich_console: Optional[Console] = None,
+        root_dir: Optional[str] = None,
+        cache: Optional[Cache] = None,
     ):
         self._root_dir = root_dir or str(Path.cwd())
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
         self._console_if: ConsoleInterface = ConsoleInterface(console)
-        self.fever = FeverCore(self._console_if.console, with_cache=with_cache)
+        self.fever = FeverCore(self._console_if.console, cache=cache)
         self._running = False
 
     def watch(self):

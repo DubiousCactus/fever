@@ -4,6 +4,7 @@
 # Distributed under terms of the MIT license.
 
 import abc
+import logging
 from collections import defaultdict
 from typing import Any, Dict, Tuple
 
@@ -15,16 +16,19 @@ from .types import (
     FeverParameters,
 )
 
+log = logging.getLogger("fever-cache")
+log.debug("Engine initialized")
+
 
 def parse_mem_limit(mem_limit: str) -> int:
-    if mem_limit.lower().endswith("b"):
-        return int(mem_limit[:-2])
-    elif mem_limit.lower().endswith("kb"):
+    if mem_limit.lower().endswith("kb"):
         return int(mem_limit[:-2]) * 1024
     elif mem_limit.lower().endswith("mb"):
         return int(mem_limit[:-2]) * 1024 * 1024
     elif mem_limit.lower().endswith("gb"):
         return int(mem_limit[:-2]) * 1024 * 1024 * 1024
+    elif mem_limit.lower().endswith("b"):
+        return int(mem_limit[:-2])
     else:
         return int(mem_limit)
 
@@ -123,10 +127,10 @@ class Cache:
     def __init__(
         self,
         console: ConsoleInterface,
-        mem_limit: str,
-        eviction_policy: EvictionPolicy,
+        mem_limit: str = "100MB",
+        eviction_policy: EvictionPolicy = ParamWiseLRUEvictionPolicy(),
         min_calls_threshold: int = 2,
-        min_time_s_threhsold: float = 0.1,
+        min_time_s_threshold: float = 0.1,
         enabled: bool = True,
     ) -> None:
         self._console = console
@@ -136,7 +140,7 @@ class Cache:
         self.mem_limit_human = mem_limit  # TODO: Handle unlimited (-1?)
         self._mem_limit_bytes = parse_mem_limit(mem_limit)
         self._min_calls_threshold = min_calls_threshold
-        self._min_time_threhsold = min_time_s_threhsold
+        self._min_time_threhsold = min_time_s_threshold
         self._eviction_policy = eviction_policy
         self._enabled = enabled
 
@@ -146,7 +150,12 @@ class Cache:
         self._eviction_policy.update_all()
         if function_cache := self._entries.get(function, None):
             if entry := function_cache.get(params.hash, None):
-                self._eviction_policy.update_entry(function, params.hash)
+                try:
+                    self._eviction_policy.update_entry(function, params.hash)
+                except Exception as e:
+                    log.error(
+                        f"Error updating eviction policy for {function} with params {params}: {e}"
+                    )
                 return entry
         return None
 
@@ -157,19 +166,23 @@ class Cache:
         statistics: Dict[str, Any],
         result: Any,
     ) -> None:
+        log.debug(
+            f"Attempting to cache result for {function} with params {params} and statistics {statistics}"
+        )
         if not self._enabled:
             return
         if (
             statistics.get("calls", 0) >= self._min_calls_threshold
             and statistics.get("weight", 0) >= self._min_time_threhsold
         ):
+            log.debug("Caching result...")
             self._entries[function][params.hash] = result
             self._stats[function][params.hash] = statistics
             self._eviction_policy.update_entry(function, params.hash)
             if asizeof.asizeof(self._entries) > self._mem_limit_bytes:
                 self._console.print(
                     f"Cache exceeded memory limit of {self.mem_limit_human}; evicting entries...",
-                    style="bold red",
+                    style="bold yellow",
                 )
                 while asizeof.asizeof(self._entries) > self._mem_limit_bytes:
                     fn_key, params_key = self._eviction_policy.pick(

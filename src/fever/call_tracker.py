@@ -4,6 +4,7 @@
 # Distributed under terms of the MIT license.
 
 import enum
+import logging
 import sys
 import threading
 import timeit
@@ -15,7 +16,7 @@ from typing import Any, Callable, Optional
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
-from fever.cache import Cache, ParamWiseLRUEvictionPolicy
+from fever.cache import Cache
 from fever.registry import Registry
 from fever.types import FeverParameters, FeverWarning
 from fever.utils import ConsoleInterface
@@ -34,6 +35,10 @@ class TrackingMode(enum.Enum):
 
     KV_POINTERS = enum.auto()
     KV_NAMES = enum.auto()
+
+
+log = logging.getLogger("fever-tracer")
+log.debug("Engine initialized")
 
 
 def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
@@ -79,7 +84,7 @@ class CallTracker:
         registry: Registry,
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
-        cache_size: Optional[str] = "1MB",
+        cache: Optional[Cache] = None,
         on_new_call: Callable[[threading.Event, object, object], None] = (
             lambda e, k, v: None
         ),
@@ -89,12 +94,7 @@ class CallTracker:
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
-        self._cache = Cache(
-            console,
-            cache_size or "0B",
-            ParamWiseLRUEvictionPolicy(),
-            enabled=cache_size is not None,
-        )
+        self._cache = cache or Cache(console, enabled=False)
         self._on_new_call: Callable[[threading.Event, object, object], None] = (
             on_new_call
         )
@@ -162,6 +162,10 @@ class CallTracker:
                     f"Cache hit for callable '{callable_full_name}' with params: {params}",
                     style="yellow on black",
                 )
+                print("hitting cache")
+                log.debug(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                )
                 return cached_result
             start = timeit.default_timer()
             try:
@@ -183,6 +187,10 @@ class CallTracker:
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
+            log.debug(
+                f"Writing to cache for callable '{callable_full_name}' with params: {params} "
+            )
+            log.debug(f"Cache entries: {len(self._cache._entries)}")
             self._cache.set(func_ptr, params, edge_data, result)
             self._on_new_call(self._resume_event, k, v)
             return result

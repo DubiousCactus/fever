@@ -12,6 +12,7 @@ from fever.ast_analysis import (
     ASTAnalyzer,
     generic_function,
 )
+from fever.cache import Cache
 from fever.registry import Registry
 
 from .call_tracker import CallTracker, TrackingMode
@@ -53,11 +54,7 @@ class FeverCore:
     def __init__(
         self,
         rich_console: Optional[Console] = None,
-        cache_size: Optional[str] = "1MB",
-        on_new_call: Callable[[object, object], None] = lambda k, v: None,
-        on_exception: Callable[[Any, str, Any], None] = (
-            lambda frame, event, arg: None
-        ),
+        cache: Optional[Cache] = None,
     ):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
@@ -74,9 +71,7 @@ class FeverCore:
             self.registry,
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
-            cache_size=cache_size,
-            on_new_call=on_new_call,
-            on_exception=on_exception,
+            cache=cache,
         )
 
     def setup(self, caller_frame: Optional[FrameType] = None):
