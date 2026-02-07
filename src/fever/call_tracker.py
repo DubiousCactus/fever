@@ -88,7 +88,7 @@ class CallTracker:
         on_new_call: Callable[[threading.Event, object, object], None] = (
             lambda e, k, v: None
         ),
-        on_exception: Callable[[Any, Any], None] = (lambda frame, exception: None),
+        on_exception: Callable[[FrameType, str, Any], Any] = (lambda f, e, a: None),
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
@@ -98,7 +98,7 @@ class CallTracker:
         self._on_new_call: Callable[[threading.Event, object, object], None] = (
             on_new_call
         )
-        self._on_exception: Callable[[Any, Any], None] = on_exception
+        self._on_exception: Callable[[FrameType, str, Any], Any] = on_exception
         self._resume_event = threading.Event()
 
     def track_calls(
@@ -168,11 +168,9 @@ class CallTracker:
                 )
                 return cached_result
             start = timeit.default_timer()
-            try:
-                result = func_ptr(*args, **kwargs)
-            except Exception as e:
-                self._on_exception(sys._getframe(), e)
-                sys.exit(0)
+            sys.settrace(self._on_exception(self._resume_event))
+            result = func_ptr(*args, **kwargs)
+            sys.settrace(None)
 
             end = timeit.default_timer()
             # WARN: The caller object will change as the caller function is recompiled!

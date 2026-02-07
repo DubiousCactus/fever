@@ -3,6 +3,9 @@ import logging
 import pickle
 import runpy
 import threading
+from pathlib import Path
+from traceback import StackSummary, format_exception_only, walk_stack
+from types import FrameType
 from typing import (
     Any,
     Callable,
@@ -28,7 +31,6 @@ from fever.tui.widgets.call_graph import CallGraph
 from fever.types import FeverEntryPoint
 
 from .widgets.checkbox_panel import CheckboxPanel
-from .widgets.editor import CodeEditor
 from .widgets.files_tree import FilesTree
 from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
@@ -68,6 +70,7 @@ class BuilderUI(App):
         self._engine = engine
         self._engine.set_on_new_call_callback(self.tracker_callback)
         self._engine.set_on_exception_callback(self.exception_callback)
+        # sys.settrace(self.exception_callback(self._engine._call_tracker._resume_event))
         # INFO: Here's the plan: during watch phase we can export the call graph. During
         # debug phase, we hook up fever, import main script which will have a chain
         # reaction of monkey-patching every callable, then load the call graph. With the
@@ -202,25 +205,60 @@ class BuilderUI(App):
         if v == "compute_footprints_by_differentials_DEBUG":
             self.log_tracer(f"Hanging on {v}...")
             resume_event.wait()
-            self.query_one(CallGraph).highlight(v)
-            self.hang(False)
+            # self.query_one(CallGraph).highlight(v)
+            # self.hang(False)
 
-    def exception_callback(self, frame: Any, exception: Any) -> None:
-        # FIXME: Somehow, exceptions aren't being caught. Is Textual or rich
-        # intercepting them?? Fuck it, I can catch it myself. no need for settrace()!
-        log.debug(f"Exception callback called with frame={frame},  arg={exception}")
-        self.log_tracer(Text(f"EXCEPTION: {exception}", style="bold red"))
-        log.debug(f"Exception callback called with exception: {exception}")
+    def exception_callback(
+        self, resume_event: threading.Event
+    ) -> Callable[[FrameType, str, Any], Any]:
+        def handler(
+            frame: FrameType, event: str, arg: Any
+        ) -> Callable[[FrameType, str, Any], Any]:
+            if event == "exception":
+                try:
+                    fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
+                except Exception:
+                    try:
+                        fpath = Path(frame.f_code.co_filename).relative_to(
+                            Path.cwd(), walk_up=True
+                        )
+                    except Exception:
+                        fpath = Path(frame.f_code.co_filename)
+                exception: Exception = Exception()
+                exception, value, tb = arg
+                frames = []
+                f = frame
+                while f:
+                    frames.append(f)
+                    f = f.f_back
+                log.debug(
+                    f"Exception callback called with exception: {exception}. Value: {value}"
+                )
+                stack = StackSummary.extract(walk_stack(frame))
+                formatted = "".join(reversed(stack.format()))
+
+                self.log_tracer(
+                    Text(
+                        "".join(format_exception_only(exception, value)).strip()
+                        + f" (<-- {fpath}@L{frame.f_lineno})",
+                        style="bold red",
+                    )
+                )
+                self.query_one("#traceback", RichLog).write(formatted)
+                self.hang(True)
+                resume_event.wait()
+                return handler
+            return handler
+
         # self.query_one("#traceback", RichLog).write_exception(exception)
-        self.hang(True)
+        return handler
 
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
         self.log_tracer("Reloading hot code...")
         self.query_one(CheckboxPanel).ready()
         self.query_one(Tracer).ready()
-        # self.query_one(CheckboxPanel).hang(threw)
-        # self.query_one(CodeEditor).ready()
+        self.query_one("#traceback", RichLog).clear()
         self.run_chain()
 
     def action_reload(self) -> None:
@@ -275,7 +313,7 @@ class BuilderUI(App):
         because the function ran successfully.
         """
         self.query_one(Tracer).hang(threw)
-        self.query_one(CodeEditor).hang(threw)
+        # self.query_one(CallGraph).hang(threw)
 
     def print_err(self, msg: str | Exception) -> None:
         self.log_tracer(

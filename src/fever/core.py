@@ -415,7 +415,9 @@ class FeverCore:
     ) -> None:
         self._call_tracker._on_new_call = callback
 
-    def set_on_exception_callback(self, callback: Callable[[Any, Any], None]) -> None:
+    def set_on_exception_callback(
+        self, callback: Callable[[FrameType, str, Any], Any]
+    ) -> None:
         self._call_tracker._on_exception = callback
 
     def export_trace(self, path: str) -> None:
