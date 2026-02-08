@@ -169,6 +169,7 @@ class Cache:
         log.debug(
             f"Attempting to cache result for {function} with params {params} and statistics {statistics}"
         )
+        log.debug(f"Cache entries: {len(self._entries)}")
         if not self._enabled:
             return
         if (
@@ -178,12 +179,17 @@ class Cache:
             log.debug(f"Caching result and params for {function}...")
             self._entries[function][params.hash] = result
             self._eviction_policy.update_entry(function, params.hash)
-            if asizeof.asizeof(self._entries) > self._mem_limit_bytes:
+            try:
+                size = asizeof.asizeof(self._entries)
+            except Exception:
+                log.error("Error calculating cache size, skipping eviction check")
+                return
+            if size > self._mem_limit_bytes:
                 self._console.print(
                     f"Cache exceeded memory limit of {self.mem_limit_human}; evicting entries...",
                     style="bold yellow",
                 )
-                while asizeof.asizeof(self._entries) > self._mem_limit_bytes:
+                while size > self._mem_limit_bytes:
                     fn_key, params_key = self._eviction_policy.pick(
                         self._entries, self._stats, self._mem_limit_bytes
                     )
