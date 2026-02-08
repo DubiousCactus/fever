@@ -39,7 +39,7 @@ def watch(
         if no_cache
         else Cache(
             console=console,
-            mem_limit="100M",
+            mem_limit="100MB",
             min_calls_threshold=1,
             min_time_s_threshold=0.1,
         ),
@@ -100,7 +100,9 @@ def debug(
             mem_limit="1GB",
             min_calls_threshold=0,
             min_time_s_threshold=0,
+            # enabled=False,
         ),
+        propagate_trace_on_cache_hit=True,
     )  # TODO: Unlimited cache with disk swapping
     fever_engine.setup()
     command = [script] + (extra_args or [])

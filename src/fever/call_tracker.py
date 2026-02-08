@@ -11,7 +11,7 @@ import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import networkx as nx
 
@@ -85,21 +85,20 @@ class CallTracker:
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
         cache: Optional[Cache] = None,
-        on_new_call: Callable[[threading.Event, object, object], None] = (
-            lambda e, k, v: None
-        ),
-        on_exception: Callable[[threading.Event], Any] = (lambda e: None),
+        propagate_trace_on_cache_hit: bool = False,
+        on_new_call: Callable[[object, object], None] = (lambda k, v: None),
+        on_exception: Callable = lambda: None,
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
         self._cache = cache or Cache(console, enabled=False)
-        self._on_new_call: Callable[[threading.Event, object, object], None] = (
-            on_new_call
-        )
-        self._on_exception: Callable[[threading.Event], Any] = on_exception
-        self._resume_event = threading.Event()
+        self._on_new_call: Callable[[object, object], None] = on_new_call
+        self._on_exception: Callable = on_exception
+        self.resume_event = threading.Event()
+        self.stop_event = threading.Event()
+        self._propagate_trace_on_cache_hit = propagate_trace_on_cache_hit
 
     def track_calls(
         self,
@@ -123,7 +122,13 @@ class CallTracker:
             # as my caller/callee objects. Function addresses? Class instances? Bounded
             # methods? I'll know more as I implement the rest, and I'll revisit this
             # part.
-            self._resume_event.clear()
+            log.debug(
+                f"Tracking call to '{func.name}' defined in '{module.name}' with {len(args)} args and {len(kwargs)} kwargs"
+            )
+            self.resume_event.clear()
+            if self.stop_event.is_set():
+                # sys.settrace(None)
+                raise Exception("Over.")
             caller_frame = sys._getframe(1)
             caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
@@ -143,8 +148,21 @@ class CallTracker:
                     caller_obj = module.obj  # Fallback to the module object
                 k, v = caller_obj, func.obj
 
-            self._call_graph.add_nodes_from([k, v])
             params = FeverParameters(args, kwargs)
+            # INFO: We don't know the caller's parameters, but they are in the graph
+            # somewhere. For now, assuming a single thread, we can connect the caller's
+            # node to the previously registered node for that function. This is britle
+            # though.
+            # FIXME: This will break if we go multithreaded:
+            caller_params_hash = -1
+            for n in self._call_graph.nodes:
+                if n[0] == k:
+                    caller_params_hash = n[1]
+            k, v = (
+                (k, caller_params_hash),
+                (v, params.hash),
+            )
+            self._call_graph.add_nodes_from([k, v])
             self._call_graph.add_edge(k, v, key=params.hash, params=params)
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
@@ -157,26 +175,31 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
-            self._on_new_call(self._resume_event, k, v)
-            # FIXME: Disabling the cache allows to re-run the graph from entry to exit
-            # nodes because it executes the function. If we use the cache, there's no
-            # execution, preventing further calls to be executed. We need to use the
-            # cache, then emulate further calls as they are recorded in our call graph.
-            # if cached_result := self._cache.get(func_ptr, params):
-            #     self._console.print(
-            #         f"Cache hit for callable '{callable_full_name}' with params: {params}",
-            #         style="yellow on black",
-            #     )
-            #     print("hitting cache")
-            #     log.debug(
-            #         f"Cache hit for callable '{callable_full_name}' with params: {params}",
-            #     )
-            #     return cached_result
-            sys.settrace(self._on_exception(self._resume_event))
+            self._on_new_call(k, v)
+            # TODO: If the function code hash has changed, we should skip the cache!
+            if cached_result := self._cache.get(func_ptr, params):
+                self._console.print(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                    style="yellow on black",
+                )
+                log.debug(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                )
+                if self._propagate_trace_on_cache_hit:
+                    for u, v, data in self._call_graph.edges(data=True):
+                        if u == v:
+                            _ = self._registry.invoke(
+                                module.name, v.name, data["params"]
+                            )
+                return cached_result
             start = timeit.default_timer()
-            result = func_ptr(*args, **kwargs)
+            try:
+                result = func_ptr(*args, **kwargs)
+            except Exception as e:
+                self._on_exception(e)
+                self.resume_event.wait()
             end = timeit.default_timer()
-            sys.settrace(None)
+            log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
             # want the caller to be the function name instead of the pointer, so we
@@ -189,11 +212,12 @@ class CallTracker:
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
-            log.debug(
-                f"Writing to cache for callable '{callable_full_name}' with params: {params} "
-            )
-            log.debug(f"Cache entries: {len(self._cache._entries)}")
-            self._cache.set(func_ptr, params, edge_data, result)
+            try:
+                self._cache.set(func_ptr, params, edge_data, result)
+            except Exception as e:
+                log.error(
+                    f"Error setting cache for {func_ptr} with params {params}: {e}"
+                )
             return result
 
         return fever_wrapper
@@ -246,6 +270,7 @@ class CallTracker:
         """
         G = nx.DiGraph()
         for u, v, data in self._call_graph.edges(data=True):
+            u, v = u[0], v[0]  # Get the function objects from the node keys
             if G.has_edge(u, v):
                 G[u][v]["cum_time"] += data["cum_time"]
                 G[u][v]["calls"] += data["calls"]
@@ -274,10 +299,8 @@ class CallTracker:
             raise NotImplementedError(
                 f"Tracking mode {self._tracking_mode} not implemented."
             )
-        if k not in self._call_graph:
-            return []
         params = []
         for u, v, data in self._call_graph.edges(data=True):
-            if v == k:
-                params.append((u, data["params"]))
+            if v[0] == k:
+                params.append((u[0], data["params"]))
         return params

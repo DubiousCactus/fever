@@ -1,10 +1,9 @@
 import logging
 import pickle
 import sys
-import threading
 import warnings
 from types import FrameType, ModuleType
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from rich.console import Console
@@ -58,6 +57,7 @@ class FeverCore:
         self,
         rich_console: Optional[Console] = None,
         cache: Optional[Cache] = None,
+        propagate_trace_on_cache_hit: bool = False,
     ):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
@@ -76,6 +76,7 @@ class FeverCore:
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
             cache=cache,
+            propagate_trace_on_cache_hit=propagate_trace_on_cache_hit,
         )
 
     def setup(self, caller_frame: Optional[FrameType] = None):
@@ -415,13 +416,13 @@ class FeverCore:
         raise NotImplementedError
 
     def set_on_new_call_callback(
-        self, callback: Callable[[threading.Event, object, object], None]
+        self, callback: Callable[[object, object], None]
     ) -> None:
         self._call_tracker._on_new_call = callback
 
     def set_on_exception_callback(
         self,
-        callback: Callable[[threading.Event], Any],
+        callback: Callable,
     ) -> None:
         self._call_tracker._on_exception = callback
 

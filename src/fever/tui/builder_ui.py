@@ -2,18 +2,16 @@ import asyncio
 import logging
 import pickle
 import runpy
-import sys
-import threading
 from collections import namedtuple
 from pathlib import Path
-from traceback import StackSummary, format_exception_only, walk_stack
-from types import FrameType
+from traceback import StackSummary, format_exception_only, walk_tb
 from typing import (
     Any,
     Callable,
     Dict,
     Iterable,
     List,
+    Optional,
     Tuple,
 )
 
@@ -36,12 +34,6 @@ from .widgets.files_tree import FilesTree
 from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
 from .widgets.tracer import Tracer
-
-# logging.basicConfig(
-#     level=logging.DEBUG,
-#     handlers=[RichHandler()],
-# )
-#
 
 logging.basicConfig(
     filename="fever_debug.log",
@@ -73,23 +65,23 @@ class BuilderUI(App):
         self._engine = engine
         self._engine.set_on_new_call_callback(self.tracker_callback)
         self._engine.set_on_exception_callback(self.exception_callback)
-        # sys.settrace(self.exception_callback(self._engine._call_tracker._resume_event))
         # INFO: Here's the plan: during watch phase we can export the call graph. During
         # debug phase, we hook up fever, import main script which will have a chain
         # reaction of monkey-patching every callable, then load the call graph. With the
         # call graph and recorded parameters, we can then re-run the exact same trace.
-        # But we cache every result ofc. Then the user selects entry/exit nodes, and
+        # But we cache every result ofc. Then the user selects start/end nodes, and
         # the debugger can just rerun through the set circuit. Voila.
         self._script_path = script_path
         # FIXME: We seem to be dealing with the same issue of pickling arbitrary call
         # parameters. To go around this, we can skip them for now.
         self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
-        self._entry_node, self._exit_node = (
+        self._start_node, self._end_node = (
             Node("footprinting", "compute_footprints_by_differentials_DEBUG"),
             Node("footprinting", "test"),
         )
         self._has_run = False
+        self._user_task: Optional[asyncio.Task] = None
         log.debug(
             f"BuilderUI initialized with script_path={script_path} and trace_path={trace_path}"
         )
@@ -138,6 +130,7 @@ class BuilderUI(App):
         log.debug("Starting to run the chain of modules...")
         if len(self._module_chain) == 0:
             self.log_tracer(Text("The chain is empty!", style="bold red"))
+        self._engine._call_tracker.stop_event.clear()
         self.log_tracer(Text(f"Running {self._script_path}...", style="yellow"))
         log.debug(f"Running script at path: {self._script_path}")
         # NOTE: The user script runs in a separate thread, allowing to keep the UI async
@@ -147,30 +140,42 @@ class BuilderUI(App):
         if not self._has_run:
             # NOTE: Compute a part of the path untll end node, and fill up the cache.
             self._has_run = True
-            await asyncio.to_thread(
-                runpy.run_path,
-                self._script_path,
-                run_name="__main__",
+            self._user_task = asyncio.create_task(
+                asyncio.to_thread(
+                    runpy.run_path,
+                    self._script_path,
+                    run_name="__main__",
+                )
             )
+            await self._user_task
+            # FIXME: How do we kill the thread upon exit or quick rerun?
         else:
-            # NOTE: The cache should be filled up to end node, we can just call entry node
+            # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
             self.log_tracer(
-                f"Second run: running with cached results from {self._entry_node} to {self._exit_node}..."
+                f"Second run: running with cached results from {self._start_node} to {self._end_node}..."
             )
-            params = await asyncio.to_thread(
-                self._engine.get_cached_params,
-                self._entry_node.module,
-                self._entry_node.name,
+            self._user_task = asyncio.create_task(
+                asyncio.to_thread(
+                    self._engine.get_cached_params,
+                    self._start_node.module,
+                    self._start_node.name,
+                )
             )
+            params = await self._user_task
+            # TODO: Allow user to select the parameters from the trace
             # Use the first cached params for now, ignore the caller:
             params = params[0][1]
-            await asyncio.to_thread(
-                self._engine.registry.invoke,
-                self._entry_node.module,
-                self._entry_node.name,
-                params,
+            self._user_task = asyncio.create_task(
+                asyncio.to_thread(
+                    self._engine.registry.invoke,
+                    self._start_node.module,
+                    self._start_node.name,
+                    params,
+                )
             )
+            await self._user_task
+            # FIXME: How do we kill the thread upon exit or quick rerun?
         log.debug("Script run completed.")
 
         # for module in self._module_chain:
@@ -197,10 +202,32 @@ class BuilderUI(App):
         cancel it first. This can happen if the user triggers a reload while the chain
         has hung.
         """
+        if self._user_task:
+            self._engine._call_tracker.resume_event.clear()
+            self._engine._call_tracker.stop_event.set()
+            log.debug("User task cancelled.")
+            self._user_task.cancel()
         if self._runner_task is not None:
             self._runner_task.cancel()
             self._runner_task = None
         self._runner_task = asyncio.create_task(self._run_chain(), name="run_chain")
+
+    def action_quit(self) -> None:
+        log.debug(
+            "Quitting application, cancelling runner task and user task if they exist..."
+        )
+        self._engine._call_tracker.stop_event.set()
+        self._engine._call_tracker.resume_event.clear()
+        if self._user_task:
+            self._engine._call_tracker.resume_event.clear()
+            self._engine._call_tracker.stop_event.set()
+            log.debug("User task cancelled.")
+            self._user_task.cancel()
+        if self._runner_task is not None:
+            self._runner_task.cancel()
+            self._runner_task = None
+            log.debug("Runner task cancelled.")
+        self.app.exit()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -228,62 +255,54 @@ class BuilderUI(App):
         yield traceback
         yield Footer()
 
-    def tracker_callback(
-        self, resume_event: threading.Event, k: object, v: object
-    ) -> None:
-        sys.settrace(None)
-        self.log_tracer(f"CALL: {k} -> {v}")
+    def tracker_callback(self, k: Tuple[object, int], v: Tuple[object, int]) -> None:
+        try:
+            self.log_tracer(
+                f"CALL: {k[0]}[{hex(k[1])[-5:]}] -> {v[0]}[{hex(v[1])[-5:]}]"
+            )
+        except Exception:
+            self.log_tracer(f"CALL: {k[0]} -> {v[0]}")
         log.debug(f"Tracker callback called with k={k}, v={v}")
-        if v == self._exit_node.name:
-            self.log_tracer(f"Hanging on {v}...")
-            resume_event.wait()
+        # TODO: Detect if this is a cached result, and if so, emulate subsequent calls
+        # from the recorded trace.
+        if v[0] == self._end_node.name:
+            self.log_tracer(f"Hanging on {v[0]}...")
+            self._engine._call_tracker.resume_event.wait()
             # self.query_one(CallGraph).highlight(v)
             # self.hang(False)
 
-    def exception_callback(
-        self, resume_event: threading.Event
-    ) -> Callable[[FrameType, str, Any], Any]:
-        def handler(
-            frame: FrameType, event: str, arg: Any
-        ) -> Callable[[FrameType, str, Any], Any]:
-            if event == "exception":
+    def exception_callback(self, exception: Exception) -> None:
+        assert exception.__traceback__ is not None
+        tb = exception.__traceback__.tb_next
+        assert tb is not None
+        frame = tb.tb_frame
+        try:
+            fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
+        except Exception:
+            try:
+                fpath = Path(frame.f_code.co_filename).relative_to(
+                    Path.cwd(), walk_up=True
+                )
+            except Exception:
                 try:
-                    fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
+                    fpath = Path(frame.f_code.co_filename)
                 except Exception:
-                    try:
-                        fpath = Path(frame.f_code.co_filename).relative_to(
-                            Path.cwd(), walk_up=True
-                        )
-                    except Exception:
-                        fpath = Path(frame.f_code.co_filename)
-                exception: Exception = Exception()
-                exception, value, tb = arg
-                frames = []
-                f = frame
-                while f:
-                    frames.append(f)
-                    f = f.f_back
-                log.debug(
-                    f"Exception callback called with exception: {exception}. Value: {value}"
-                )
-                stack = StackSummary.extract(walk_stack(frame))
-                formatted = "".join(reversed(stack.format()))
+                    fpath = "UNKNOWN_PATH"
+        try:
+            stack = StackSummary.extract(walk_tb(tb))
+            formatted = "".join(reversed(stack.format()))
+        except Exception:
+            formatted = "Could not format stack trace."
 
-                self.log_tracer(
-                    Text(
-                        "".join(format_exception_only(exception, value)).strip()
-                        + f" (<-- {fpath}@L{frame.f_lineno})",
-                        style="bold red",
-                    )
-                )
-                self.query_one("#traceback", RichLog).write(formatted)
-                self.hang(True)
-                resume_event.wait()
-                return handler
-            return handler
-
-        # self.query_one("#traceback", RichLog).write_exception(exception)
-        return handler
+        self.log_tracer(
+            Text(
+                "".join(format_exception_only(exception)).strip()
+                + f" (<-- {fpath}@L{tb.tb_lineno})",
+                style="bold red",
+            )
+        )
+        self.query_one("#traceback", RichLog).write(formatted)
+        self.hang(True)
 
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
