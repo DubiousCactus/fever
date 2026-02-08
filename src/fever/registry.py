@@ -146,5 +146,5 @@ class Registry:
     def invoke(self, module_name: str, func_name: str, params: FeverParameters) -> Any:
         log.debug(f"invoking {func_name} with {len(params)} args")
         return getattr(sys.modules[module_name], func_name)(
-            *params.args, **params.kwargs_dict
+            *params.args, **params.kwargs
         )

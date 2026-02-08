@@ -148,7 +148,19 @@ class CallTracker:
                     caller_obj = module.obj  # Fallback to the module object
                 k, v = caller_obj, func.obj
 
-            params = FeverParameters(args, kwargs)
+            # INFO: if this is a cached call, we should retreive the existing edge and
+            # not  create a new FeverParameters object! It will be an cached call if the
+            # parameters are exactly the same objects.
+            tmp_params = FeverParameters(args, kwargs)
+            found = None
+            for _, _, key, data in self._call_graph.edges(data=True, keys=True):
+                if key == tmp_params.hash:
+                    found = data["params"]
+                    break
+            if found is not None:
+                params = found
+            else:
+                params = tmp_params
             # INFO: We don't know the caller's parameters, but they are in the graph
             # somewhere. For now, assuming a single thread, we can connect the caller's
             # node to the previously registered node for that function. This is britle

@@ -5,6 +5,7 @@
 
 import warnings
 from collections.abc import Iterable
+from copy import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -90,10 +91,23 @@ class FeverParameters:
             else:
                 return x
 
-        self.args = make_immutable(args)
-        self.kwargs = make_immutable(kwargs)
+        def hash_or_hash(x: Any) -> int:
+            h = -1
+            if isinstance(x, Iterable) and not isinstance(x, str):
+                for y in x:
+                    res = hash_or_hash(y)
+                    h += res
+                return h
+            try:
+                h = hash(x)
+            except Exception:
+                h = hash(make_immutable(x))
+            return h
+
+        self.args = copy(args)
+        self.kwargs = copy(kwargs)
         try:
-            self.hash = hash((self.args, self.kwargs))
+            self.hash = hash((hash_or_hash(args), hash_or_hash(kwargs)))
         except TypeError:
             warnings.warn(
                 f"Could not hash parameters: args={self.args}, kwargs={self.kwargs}",
@@ -114,13 +128,8 @@ class FeverParameters:
         args_len = 1
         if isinstance(self.args, Iterable):
             args_len = len(self.args)
-        kwargs_len = len(self.kwargs_dict)
+        kwargs_len = len(self.kwargs)
         return args_len + kwargs_len
-
-    @property
-    def kwargs_dict(self) -> Dict:
-        assert isinstance(self.kwargs, frozenset)
-        return {x: i for i, s in enumerate(self.kwargs) for x in s}
 
 
 class FeverEntryPoint:
