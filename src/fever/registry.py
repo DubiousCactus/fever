@@ -143,8 +143,19 @@ class Registry:
             for method in module.methods[cls_]:
                 self._add_method_code_pointer(module_name, cls_, method)
 
-    def invoke(self, module_name: str, func_name: str, params: FeverParameters) -> Any:
-        log.debug(f"invoking {func_name} with {len(params)} args")
-        return getattr(sys.modules[module_name], func_name)(
-            *params.args, **params.kwargs
-        )
+    def invoke_wrapped(
+        self,
+        module_name: str,
+        func_name: str,
+        params: FeverParameters,
+        class_name: Optional[str] = None,
+    ) -> Any:
+        log.debug(f"invoking wrapped {func_name} with {len(params)} args")
+        if class_name:
+            return getattr(getattr(sys.modules[module_name], class_name), func_name)(
+                *params.args, **params.kwargs
+            )
+        else:
+            return getattr(sys.modules[module_name], func_name)(
+                *params.args, **params.kwargs
+            )

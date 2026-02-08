@@ -77,7 +77,7 @@ class BuilderUI(App):
         self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
         self._start_node, self._end_node = (
-            Node("footprinting", "compute_footprints_by_differentials_DEBUG"),
+            Node("gaussian_utils", "compute_gaussians"),
             Node("footprinting", "test"),
         )
         self._has_run = False
@@ -168,7 +168,7 @@ class BuilderUI(App):
             params = params[0][1]
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
-                    self._engine.registry.invoke,
+                    self._engine.registry.invoke_wrapped,
                     self._start_node.module,
                     self._start_node.name,
                     params,
@@ -212,16 +212,15 @@ class BuilderUI(App):
             self._runner_task = None
         self._runner_task = asyncio.create_task(self._run_chain(), name="run_chain")
 
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         log.debug(
             "Quitting application, cancelling runner task and user task if they exist..."
         )
-        self._engine._call_tracker.stop_event.set()
-        self._engine._call_tracker.resume_event.clear()
         if self._user_task:
             self._engine._call_tracker.resume_event.clear()
             self._engine._call_tracker.stop_event.set()
             log.debug("User task cancelled.")
+            await self._user_task
             self._user_task.cancel()
         if self._runner_task is not None:
             self._runner_task.cancel()

@@ -126,9 +126,9 @@ class CallTracker:
                 f"Tracking call to '{func.name}' defined in '{module.name}' with {len(args)} args and {len(kwargs)} kwargs"
             )
             self.resume_event.clear()
-            if self.stop_event.is_set():
-                # sys.settrace(None)
-                raise Exception("Over.")
+            # if self.stop_event.is_set():
+            #     # sys.settrace(None)
+            #     raise Exception("Over.")
             caller_frame = sys._getframe(1)
             caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
@@ -171,7 +171,12 @@ class CallTracker:
             )
             self._call_graph.add_nodes_from([k, v])
             self._call_graph.add_edge(
-                k, v, key=params.hash, params=params, callee_module=module.name
+                k,
+                v,
+                key=params.hash,
+                params=params,
+                callee_module=module.name,
+                callee_class_name=class_.name if class_ else None,
             )
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
@@ -198,19 +203,30 @@ class CallTracker:
                 if self._propagate_trace_on_cache_hit:
                     for u_caller, v_callee, data in self._call_graph.edges(data=True):
                         if u_caller == v:
-                            if class_:
-                                # TODO: Implement for methods. We have the object in the
-                                # parameters, but we need to find the right method in the registry.
-                                log.debug(
-                                    "Cache hit propagation for methods not implemented yet."
-                                )
-                                raise NotImplementedError(
-                                    "Cache hit propagation for methods not implemented yet."
-                                )
-                                _ = self._registry.invoke_method()
+                            # NOTE: class_ isn't available when we propagate, because
+                            # calls are being made from the wrapper of a root function.
+                            # Since this is emulation, we need to recover the class of
+                            # that call. To do so, we store it in the graph.
+                            if data["callee_class_name"]:
+                                try:
+                                    _ = self._registry.invoke_wrapped(
+                                        data["callee_module"],
+                                        v_callee[0],
+                                        data["params"],
+                                        data["callee_class_name"],
+                                    )
+                                except (KeyError, AttributeError):
+                                    log.debug(
+                                        "Cache hit propagation failed: no registry entry found"
+                                    )
+                                    self._on_exception(
+                                        FeverRegistryError(
+                                            "No registry entry found for cache hit propagation"
+                                        )
+                                    )
                             else:
                                 try:
-                                    _ = self._registry.invoke(
+                                    _ = self._registry.invoke_wrapped(
                                         data["callee_module"],
                                         v_callee[0],
                                         data["params"],
