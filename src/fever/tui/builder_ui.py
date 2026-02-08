@@ -272,35 +272,44 @@ class BuilderUI(App):
             # self.hang(False)
 
     def exception_callback(self, exception: Exception) -> None:
-        assert exception.__traceback__ is not None
-        tb = exception.__traceback__.tb_next
-        assert tb is not None
-        frame = tb.tb_frame
-        try:
-            fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
-        except Exception:
-            try:
-                fpath = Path(frame.f_code.co_filename).relative_to(
-                    Path.cwd(), walk_up=True
+        if exception.__traceback__ is None:
+            # INFO: Simple exception most likley raised by Fever
+            self.log_tracer(
+                Text(
+                    str(exception),
+                    style="bold red",
                 )
+            )
+            formatted = "No traceback available."
+        else:
+            tb = exception.__traceback__.tb_next
+            assert tb is not None
+            frame = tb.tb_frame
+            try:
+                fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
             except Exception:
                 try:
-                    fpath = Path(frame.f_code.co_filename)
+                    fpath = Path(frame.f_code.co_filename).relative_to(
+                        Path.cwd(), walk_up=True
+                    )
                 except Exception:
-                    fpath = "UNKNOWN_PATH"
-        try:
-            stack = StackSummary.extract(walk_tb(tb))
-            formatted = "".join(reversed(stack.format()))
-        except Exception:
-            formatted = "Could not format stack trace."
+                    try:
+                        fpath = Path(frame.f_code.co_filename)
+                    except Exception:
+                        fpath = "UNKNOWN_PATH"
+            try:
+                stack = StackSummary.extract(walk_tb(tb))
+                formatted = "".join(reversed(stack.format()))
+            except Exception:
+                formatted = "Could not format stack trace."
 
-        self.log_tracer(
-            Text(
-                "".join(format_exception_only(exception)).strip()
-                + f" (<-- {fpath}@L{tb.tb_lineno})",
-                style="bold red",
+            self.log_tracer(
+                Text(
+                    "".join(format_exception_only(exception)).strip()
+                    + f" (<-- {fpath}@L{tb.tb_lineno})",
+                    style="bold red",
+                )
             )
-        )
         self.query_one("#traceback", RichLog).write(formatted)
         self.hang(True)
 

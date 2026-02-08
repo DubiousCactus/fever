@@ -18,7 +18,7 @@ import networkx as nx
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
 from fever.cache import Cache
 from fever.registry import Registry
-from fever.types import FeverParameters, FeverWarning
+from fever.types import FeverParameters, FeverRegistryError, FeverWarning
 from fever.utils import ConsoleInterface
 
 
@@ -143,7 +143,7 @@ class CallTracker:
                 caller_obj = get_caller_obj(caller_frame, caller_name)
                 if caller_obj is None:
                     warn = f"Could not resolve caller object for caller named '{caller_name}'"
-                    self._console.print(warn, style="red on black")
+                    log.debug(warn)
                     warnings.warn(warn, FeverWarning)
                     caller_obj = module.obj  # Fallback to the module object
                 k, v = caller_obj, func.obj
@@ -151,16 +151,11 @@ class CallTracker:
             # INFO: if this is a cached call, we should retreive the existing edge and
             # not  create a new FeverParameters object! It will be an cached call if the
             # parameters are exactly the same objects.
-            tmp_params = FeverParameters(args, kwargs)
-            found = None
+            params = FeverParameters(args, kwargs)
             for _, _, key, data in self._call_graph.edges(data=True, keys=True):
-                if key == tmp_params.hash:
-                    found = data["params"]
+                if key == params.hash:
+                    params = data["params"]
                     break
-            if found is not None:
-                params = found
-            else:
-                params = tmp_params
             # INFO: We don't know the caller's parameters, but they are in the graph
             # somewhere. For now, assuming a single thread, we can connect the caller's
             # node to the previously registered node for that function. This is britle
@@ -175,7 +170,9 @@ class CallTracker:
                 (v, params.hash),
             )
             self._call_graph.add_nodes_from([k, v])
-            self._call_graph.add_edge(k, v, key=params.hash, params=params)
+            self._call_graph.add_edge(
+                k, v, key=params.hash, params=params, callee_module=module.name
+            )
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
                 if class_
@@ -188,7 +185,8 @@ class CallTracker:
                 "Callable wrapped recursively. This is not good."
             )
             self._on_new_call(k, v)
-            # TODO: If the function code hash has changed, we should skip the cache!
+            # WARN: If the function code hash has changed, we should skip the cache! But
+            # if we reload, wouldn't the function pointer change anyway?
             if cached_result := self._cache.get(func_ptr, params):
                 self._console.print(
                     f"Cache hit for callable '{callable_full_name}' with params: {params}",
@@ -198,11 +196,34 @@ class CallTracker:
                     f"Cache hit for callable '{callable_full_name}' with params: {params}",
                 )
                 if self._propagate_trace_on_cache_hit:
-                    for u, v, data in self._call_graph.edges(data=True):
-                        if u == v:
-                            _ = self._registry.invoke(
-                                module.name, v.name, data["params"]
-                            )
+                    for u_caller, v_callee, data in self._call_graph.edges(data=True):
+                        if u_caller == v:
+                            if class_:
+                                # TODO: Implement for methods. We have the object in the
+                                # parameters, but we need to find the right method in the registry.
+                                log.debug(
+                                    "Cache hit propagation for methods not implemented yet."
+                                )
+                                raise NotImplementedError(
+                                    "Cache hit propagation for methods not implemented yet."
+                                )
+                                _ = self._registry.invoke_method()
+                            else:
+                                try:
+                                    _ = self._registry.invoke(
+                                        data["callee_module"],
+                                        v_callee[0],
+                                        data["params"],
+                                    )
+                                except (KeyError, AttributeError):
+                                    log.debug(
+                                        "Cache hit propagation failed: no registry entry found"
+                                    )
+                                    self._on_exception(
+                                        FeverRegistryError(
+                                            "No registry entry found for cache hit propagation"
+                                        )
+                                    )
                 return cached_result
             start = timeit.default_timer()
             try:

@@ -134,3 +134,8 @@ class FeverParameters:
 
 class FeverEntryPoint:
     pass
+
+
+class FeverRegistryError(Exception):
+    def __str__(self) -> str:
+        return "FeverRegistryError: " + super().__str__()
