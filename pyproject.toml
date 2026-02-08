@@ -33,6 +33,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.20",
     "requests>=2.32.5",
 ]
 
