@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 
 class FeverWarning(Warning):
     pass
@@ -83,6 +85,8 @@ class FeverParameters:
                 return frozenset([make_immutable(a) for a in x])
             elif isinstance(x, tuple):
                 return tuple([make_immutable(a) for a in x])
+            elif isinstance(x, np.ndarray):
+                return x.tobytes()
             else:
                 return x
 
