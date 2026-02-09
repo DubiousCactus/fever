@@ -27,6 +27,7 @@ from textual.widgets import (
 
 from fever.core import FeverCore
 from fever.tui.widgets.call_graph import CallGraph
+from fever.tui.widgets.nodes_panel import TraceNodesPanel
 from fever.types import FeverEntryPoint
 
 from .widgets.checkbox_panel import CheckboxPanel
@@ -230,9 +231,7 @@ class BuilderUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        checkboxes = CheckboxPanel(classes="box")
-        checkboxes.loading = True
-        yield checkboxes
+        yield TraceNodesPanel(self._call_graph, classes="box", id="trace_nodes")
         yield CallGraph(self._call_graph, classes="box", id="graph")
         logs = Logger(classes="box", id="logger")
         logs.border_title = "User logs"
