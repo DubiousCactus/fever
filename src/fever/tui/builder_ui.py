@@ -2,7 +2,6 @@ import asyncio
 import logging
 import pickle
 import runpy
-from collections import namedtuple
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
 from typing import (
@@ -10,7 +9,6 @@ from typing import (
     Callable,
     Dict,
     Iterable,
-    List,
     Optional,
     Tuple,
 )
@@ -19,18 +17,12 @@ from rich.console import RenderableType
 from rich.pretty import Pretty
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.widgets import (
-    Footer,
-    Header,
-    RichLog,
-)
+from textual.widgets import Footer, Header, RichLog, Select
 
 from fever.core import FeverCore
 from fever.tui.widgets.call_graph import CallGraph
 from fever.tui.widgets.nodes_panel import TraceNodesPanel
-from fever.types import FeverEntryPoint
 
-from .widgets.checkbox_panel import CheckboxPanel
 from .widgets.files_tree import FilesTree
 from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
@@ -44,8 +36,6 @@ logging.basicConfig(
 
 log = logging.getLogger("fever")
 log.debug("Engine initialized")
-
-Node = namedtuple("Node", ["module", "name"])
 
 
 class BuilderUI(App):
@@ -61,7 +51,6 @@ class BuilderUI(App):
 
     def __init__(self, engine: FeverCore, script_path: str, trace_path: str):
         super().__init__()
-        self._module_chain: List[FeverEntryPoint] = []
         self._runner_task = None
         self._engine = engine
         self._engine.set_on_new_call_callback(self.tracker_callback)
@@ -77,10 +66,7 @@ class BuilderUI(App):
         # parameters. To go around this, we can skip them for now.
         self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
-        self._start_node, self._end_node = (
-            Node("gaussian_utils", "compute_gaussians"),
-            Node("footprinting", "test"),
-        )
+        self._start_node, self._end_node = None, None
         self._has_run = False
         self._user_task: Optional[asyncio.Task] = None
         log.debug(
@@ -91,27 +77,6 @@ class BuilderUI(App):
         # NOTE: For now let's use pickle, but I'll use blosc2 for compression.
         with open(path, "rb") as f:
             return pickle.load(f)
-
-    async def on_mount(self):
-        # await self._chain_up()
-        # self.run_chain()
-        # runpy.run_path(self.script, run_name="__main__")
-        pass
-
-    # async def _chain_up(self) -> None:
-    #     """
-    #     Prepare the UI by adding checkboxes for each module in the chain.
-    #     """
-    #     keys = []
-    #     for module in self._module_chain:
-    #         if not isinstance(module, FeverEntryPoint):
-    #             self.exit(1)
-    #             raise TypeError(f"Expected FeverEntryPoint, got {type(module)}")
-    #         await self.query_one(CheckboxPanel).add_checkbox(str(module), module.uid)
-    #         if module.uid in keys:
-    #             raise ValueError(f"Duplicate module '{module}' with uid {module.uid}")
-    #         keys.append(module.uid)
-    #     self.query_one(CheckboxPanel).ready()
 
     async def _run_chain(self) -> None:
         """
@@ -127,10 +92,7 @@ class BuilderUI(App):
         marks the current module for reloading. When we run the chain again, marked
         modules will be reloaded and re-executed.
         """
-        self.log_tracer("Running the chain...")
         log.debug("Starting to run the chain of modules...")
-        if len(self._module_chain) == 0:
-            self.log_tracer(Text("The chain is empty!", style="bold red"))
         self._engine._call_tracker.stop_event.clear()
         self.log_tracer(Text(f"Running {self._script_path}...", style="yellow"))
         log.debug(f"Running script at path: {self._script_path}")
@@ -138,6 +100,14 @@ class BuilderUI(App):
         # and responsive. But in addition, it allows us to use threading events to
         # coordinate hanging and resuming execution, which is neat.
         # the registry with those parameters.
+        if self._start_node is None or self._end_node is None:
+            self.log_tracer(
+                Text(
+                    "Please select start and end nodes from the dropdowns above.",
+                    style="bold red",
+                )
+            )
+            return
         if not self._has_run:
             # NOTE: Compute a part of the path untll end node, and fill up the cache.
             self._has_run = True
@@ -156,6 +126,17 @@ class BuilderUI(App):
             self.log_tracer(
                 f"Second run: running with cached results from {self._start_node} to {self._end_node}..."
             )
+            self._start_node, self._end_node = self.query_one(
+                TraceNodesPanel
+            ).trace_nodes
+            if self._start_node is None or self._end_node is None:
+                self.log_tracer(
+                    Text(
+                        "Please select start and end nodes from the dropdowns above.",
+                        style="bold red",
+                    )
+                )
+                return
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
                     self._engine.get_cached_params,
@@ -261,8 +242,10 @@ class BuilderUI(App):
         except Exception:
             self.log_tracer(f"CALL: {k[0]} -> {v[0]}")
         log.debug(f"Tracker callback called with k={k}, v={v}")
-        # TODO: Detect if this is a cached result, and if so, emulate subsequent calls
-        # from the recorded trace.
+        assert self._end_node is not None, (
+            "End node should not be None when tracker callback is called"
+        )
+        # TODO: We should consider the module as well
         if v[0] == self._end_node.name:
             self.log_tracer(f"Hanging on {v[0]}...")
             self._engine._call_tracker.resume_event.wait()
@@ -314,7 +297,7 @@ class BuilderUI(App):
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
         self.log_tracer("Reloading hot code...")
-        self.query_one(CheckboxPanel).ready()
+        self.query_one(TraceNodesPanel).ready()
         self.query_one(Tracer).ready()
         self.query_one("#traceback", RichLog).clear()
         self.run_chain()
@@ -327,11 +310,16 @@ class BuilderUI(App):
         self._reload_on_throw_only = True
         self._reload()
 
-    # def on_checkbox_changed(self, message: Checkbox.Changed):
-    #     assert message.checkbox.id is not None
-    #     for module in self._module_chain:
-    #         if module.uid == message.checkbox.id:
-    #             module.is_frozen = bool(message.value)
+    def on_select_changed(self, event: Select.Changed):
+        if event.select.id == "start_node":
+            self._start_node, self._end_node = None, None
+        if event.select.id == "end_node":
+            self._start_node, self._end_node = self.query_one(
+                TraceNodesPanel
+            ).trace_nodes
+            log.debug(
+                f"Select changed: start_node={self._start_node}, end_node={self._end_node}"
+            )
 
     def set_start_epoch(self, *args, **kwargs):
         _ = args

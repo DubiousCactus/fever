@@ -19,6 +19,10 @@ Screen {
     row-span: 2;
 }
 
+#no_descendants_hint {
+    color: red;
+}
+
 
 Center {
     margin-top: 1;
