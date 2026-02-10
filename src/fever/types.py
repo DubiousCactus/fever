@@ -136,6 +136,42 @@ class FeverEntryPoint:
     pass
 
 
+class TraceNode:
+    __slots__ = "module", "func", "params_hash"
+
+    def __init__(
+        self, module: str, func: str | object, params_hash: Optional[int] = None
+    ):
+        self.module = module
+        self.func = func
+        self.params_hash = params_hash
+
+    @staticmethod
+    def strip_params(node: "TraceNode") -> "TraceNode":
+        return TraceNode(copy(node.module), copy(node.func))
+
+    def __str__(self) -> str:
+        if self.params_hash is None:
+            return f"{self.module}.{self.func}"
+        else:
+            return f"{self.module}.{self.func}({hex(self.params_hash)[-5:]})"
+
+    def equals_ignore_params(self, other: "TraceNode") -> bool:
+        return self.module == other.module and self.func == other.func
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TraceNode):
+            return False
+        return (
+            self.module == other.module
+            and self.func == other.func
+            and self.params_hash == other.params_hash
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.module, self.func, self.params_hash))
+
+
 class FeverRegistryError(Exception):
     def __str__(self) -> str:
         return "FeverRegistryError: " + super().__str__()

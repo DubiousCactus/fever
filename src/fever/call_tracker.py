@@ -4,6 +4,7 @@
 # Distributed under terms of the MIT license.
 
 import enum
+import inspect
 import logging
 import sys
 import threading
@@ -18,7 +19,7 @@ import networkx as nx
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
 from fever.cache import Cache
 from fever.registry import Registry
-from fever.types import FeverParameters, FeverRegistryError, FeverWarning
+from fever.types import FeverParameters, FeverRegistryError, FeverWarning, TraceNode
 from fever.utils import ConsoleInterface
 
 
@@ -131,6 +132,10 @@ class CallTracker:
             #     raise Exception("Over.")
             caller_frame = sys._getframe(1)
             caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
+            caller_module = (
+                inspect.getmodulename(caller_frame.f_code.co_filename)
+                or "CALLER_MODULE_UNKNOWN"
+            )
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "
@@ -161,13 +166,14 @@ class CallTracker:
             # node to the previously registered node for that function. This is britle
             # though.
             # FIXME: This will break if we go multithreaded:
+            # FIXME: Include the module too!!
             caller_params_hash = -1
             for n in self._call_graph.nodes:
-                if n[0] == k:
-                    caller_params_hash = n[1]
+                if n.func == k:
+                    caller_params_hash = n.params_hash
             k, v = (
-                (k, caller_params_hash),
-                (v, params.hash),
+                TraceNode(caller_module, k, caller_params_hash),
+                TraceNode(module.name, v, params.hash),
             )
             self._call_graph.add_nodes_from([k, v])
             self._call_graph.add_edge(
@@ -175,7 +181,6 @@ class CallTracker:
                 v,
                 key=params.hash,
                 params=params,
-                callee_module=module.name,
                 callee_class_name=class_.name if class_ else None,
             )
             registry = (
@@ -210,8 +215,8 @@ class CallTracker:
                             if data["callee_class_name"]:
                                 try:
                                     _ = self._registry.invoke_wrapped(
-                                        data["callee_module"],
-                                        v_callee[0],
+                                        v_callee.module,
+                                        v_callee.func,
                                         data["params"],
                                         data["callee_class_name"],
                                     )
@@ -227,8 +232,8 @@ class CallTracker:
                             else:
                                 try:
                                     _ = self._registry.invoke_wrapped(
-                                        data["callee_module"],
-                                        v_callee[0],
+                                        v_callee.module,
+                                        v_callee.func,
                                         data["params"],
                                     )
                                 except (KeyError, AttributeError):
@@ -319,15 +324,15 @@ class CallTracker:
         """
         G = nx.DiGraph()
         for u, v, data in self._call_graph.edges(data=True):
-            u, v = u[0], v[0]  # Get the function objects from the node keys
-            if G.has_edge(u, v):
-                G[u][v]["cum_time"] += data["cum_time"]
-                G[u][v]["calls"] += data["calls"]
-                G[u][v]["weight"] = G[u][v]["cum_time"] / G[u][v]["calls"]
+            nu, nv = TraceNode.strip_params(u), TraceNode.strip_params(v)
+            if G.has_edge(nu, nv):
+                G[nu][nv]["cum_time"] += data["cum_time"]
+                G[nu][nv]["calls"] += data["calls"]
+                G[nu][nv]["weight"] = G[nu][nv]["cum_time"] / G[nu][nv]["calls"]
             else:
                 G.add_edge(
-                    u,
-                    v,
+                    nu,
+                    nv,
                     cum_time=data["cum_time"],
                     calls=data["calls"],
                     weight=data["weight"],
@@ -335,21 +340,29 @@ class CallTracker:
         return G
 
     def get_function_calls(
-        self, func: FeverFunction
-    ) -> List[Tuple[object | str, FeverParameters]]:
+        self, module_name: str, func_name: str
+    ) -> List[Tuple[TraceNode, FeverParameters]]:
         """
         Return the list of calls as a list of tuples (caller, List[FeverParameters]) for given function.
         """
         if self._tracking_mode == TrackingMode.KV_POINTERS:
+            if func := self._registry.find_function_by_name(func_name, module_name):
+                log.debug(
+                    f"Found {func_name} in registry for module {module_name}: {func.obj}"
+                )
+            else:
+                raise RuntimeError(
+                    f"Function '{func_name}' not found in registry for module '{module_name}'"
+                )
             k = func.obj
         elif self._tracking_mode == TrackingMode.KV_NAMES:
-            k = func.name
+            k = func_name
         else:
             raise NotImplementedError(
                 f"Tracking mode {self._tracking_mode} not implemented."
             )
         params = []
         for u, v, data in self._call_graph.edges(data=True):
-            if v[0] == k:
-                params.append((u[0], data["params"]))
+            if v.func == k and v.module == module_name:
+                params.append((u, data["params"]))
         return params

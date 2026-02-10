@@ -17,7 +17,14 @@ from fever.registry import Registry
 
 from .call_tracker import CallTracker, TrackingMode
 from .dependency_tracker import DependencyTracker
-from .types import FeverClass, FeverFunction, FeverModule, FeverParameters, FeverWarning
+from .types import (
+    FeverClass,
+    FeverFunction,
+    FeverModule,
+    FeverParameters,
+    FeverWarning,
+    TraceNode,
+)
 from .utils import ConsoleInterface, parse_verbosity
 
 log = logging.getLogger("fever-core")
@@ -432,15 +439,5 @@ class FeverCore:
 
     def get_cached_params(
         self, module_name: str, func_name: str
-    ) -> List[Tuple[object | str, FeverParameters]]:
-        # if self._cache is None:
-        #     raise RuntimeError("Cache is not enabled.")
-        if func := self.registry.find_function_by_name(func_name, module_name):
-            log.debug(
-                f"Found {func_name} in registry for module {module_name}: {func.obj}"
-            )
-        else:
-            raise RuntimeError(
-                f"Function '{func_name}' not found in registry for module '{module_name}'"
-            )
-        return self._call_tracker.get_function_calls(func)
+    ) -> List[Tuple[TraceNode, FeverParameters]]:
+        return self._call_tracker.get_function_calls(module_name, func_name)

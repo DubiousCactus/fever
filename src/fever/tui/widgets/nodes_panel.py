@@ -1,4 +1,3 @@
-from collections import namedtuple
 from typing import Tuple
 
 import networkx as nx
@@ -7,7 +6,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Label, Select, Static
 
-TraceNode = namedtuple("TraceNode", ["module", "name"])
+from fever.types import TraceNode
 
 
 class TraceNodesPanel(Static):
@@ -20,7 +19,7 @@ class TraceNodesPanel(Static):
         yield Horizontal(
             Label("Start node:"),
             Select(
-                [(n, TraceNode("module", n)) for n in self._call_graph.nodes],
+                [(str(n), n) for n in self._call_graph.nodes],
                 id="start_node",
             ),
         )
@@ -42,13 +41,13 @@ class TraceNodesPanel(Static):
             self.query_one("#hint", Label).visible = False
             end_node = self.query_one("#end_node", Select)
             end_node.clear()
-            descendants = nx.descendants(self._call_graph, event.value.name)
+            descendants = nx.descendants(self._call_graph, event.value)
             if len(descendants) == 0:
                 end_node.disabled = True
                 self.query_one("#no_descendants_hint", Label).visible = True
                 return
             self.query_one("#no_descendants_hint", Label).visible = False
-            end_node.set_options([(n, TraceNode("module", n)) for n in descendants])
+            end_node.set_options([(str(n), n) for n in descendants])
             end_node.disabled = False
         self.due()
 
