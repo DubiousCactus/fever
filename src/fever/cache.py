@@ -148,8 +148,8 @@ class Cache:
         if not self._enabled:
             return None
         self._eviction_policy.update_all()
-        if function_cache := self._entries.get(function, None):
-            if entry := function_cache.get(params.hash, None):
+        if (function_cache := self._entries.get(function, None)) is not None:
+            if (entry := function_cache.get(params.hash, None)) is not None:
                 try:
                     self._eviction_policy.update_entry(function, params.hash)
                 except Exception as e:

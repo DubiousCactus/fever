@@ -197,7 +197,7 @@ class CallTracker:
             self._on_new_call(k, v)
             # WARN: If the function code hash has changed, we should skip the cache! But
             # if we reload, wouldn't the function pointer change anyway?
-            if cached_result := self._cache.get(func_ptr, params):
+            if (cached_result := self._cache.get(func_ptr, params)) is not None:
                 self._console.print(
                     f"Cache hit for callable '{callable_full_name}' with params: {params}",
                     style="yellow on black",
