@@ -39,6 +39,16 @@ log = logging.getLogger("fever")
 log.debug("Engine initialized")
 
 
+def _run_user_script(path: str) -> Tuple[str, Optional[Exception | Any]]:
+    try:
+        runpy.run_path(path, run_name="__main__")
+    except SystemExit as e:
+        return ("exit", e.code)
+    except Exception as e:
+        return ("error", e)
+    return ("ok", None)
+
+
 class BuilderUI(App):
     TITLE = "Fever Builder TUI"
     CSS_PATH = "styles/builder_ui.css"
@@ -110,16 +120,29 @@ class BuilderUI(App):
             )
             return
         if not self._has_run:
-            # NOTE: Compute a part of the path untll end node, and fill up the cache.
+            # NOTE: We can't hang on end node on first run, otherwise we won't
+            # collect the full graph and we can't hang on re-run. So here we compute the
+            # entire call graph lazily and fill up the cache.
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
-                    runpy.run_path,
+                    _run_user_script,
                     self._script_path,
-                    run_name="__main__",
                 )
             )
-            await self._user_task
-            self._has_run = True
+            status, exception = await self._user_task
+            if status == "error":
+                log.debug(f"Script raised an exception: {exception}")
+                self.exception_callback(exception)
+                return
+            elif status == "exit":
+                log.debug(
+                    f"Script called sys.exit() with code {exception}, treating as normal termination."
+                )
+                self.log_tracer(
+                    Text(f"Script exited with code {exception}.", style="yellow")
+                )
+                self._has_run = True
+                return
             # FIXME: How do we kill the thread upon exit or quick rerun?
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
@@ -153,7 +176,7 @@ class BuilderUI(App):
                 asyncio.to_thread(
                     self._engine.registry.invoke_wrapped,
                     self._start_node.module,
-                    self._start_node.name,
+                    self._start_node.func,
                     params,
                 )
             )
@@ -245,10 +268,9 @@ class BuilderUI(App):
             "End node should not be None when tracker callback is called"
         )
         # TODO: We should consider the module as well
-        if v.equals_ignore_params(self._end_node):
-            if self._has_run:
-                self.log_tracer(f"Hanging on {v.module}.{v.func}...")
-                self._engine._call_tracker.resume_event.wait()
+        if v.equals_ignore_params(self._end_node) and self._has_run:
+            self.log_tracer(f"Hanging on {v.module}.{v.func}...")
+            self._engine._call_tracker.resume_event.wait()
             # self.query_one(CallGraph).highlight(v)
             # self.hang(False)
 
