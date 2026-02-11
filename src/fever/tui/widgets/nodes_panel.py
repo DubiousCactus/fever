@@ -10,18 +10,25 @@ from fever.types import TraceNode
 
 
 class TraceNodesPanel(Static):
-    def __init__(self, call_graph: nx.DiGraph, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._call_graph = call_graph
+        self._call_graph = nx.DiGraph()
+
+    def set_call_graph(self, graph: nx.DiGraph) -> None:
+        self._call_graph = graph
+        self._refresh()
+
+    def _refresh(self):
+        self.query_one("#start_node", Select).set_options(
+            [(str(n), n) for n in self._call_graph.nodes],
+        )
+        self.ready()
 
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="trace_nodes")
         yield Horizontal(
             Label("Start node:"),
-            Select(
-                [(str(n), n) for n in self._call_graph.nodes],
-                id="start_node",
-            ),
+            Select([], id="start_node"),
         )
         yield Horizontal(
             Label("End node:"),
@@ -52,7 +59,7 @@ class TraceNodesPanel(Static):
         self.due()
 
     def on_mount(self):
-        self.ready()
+        self.loading = True
 
     # TODO: Hang and ready should be made a mixin
     def due(self) -> None:

@@ -73,7 +73,6 @@ class BuilderUI(App):
         self._script_path = script_path
         # FIXME: We seem to be dealing with the same issue of pickling arbitrary call
         # parameters. To go around this, we can skip them for now.
-        self._call_graph = self._load_trace(trace_path)
         self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
         self._start_node, self._end_node = None, None
         self._has_run = False
@@ -109,14 +108,6 @@ class BuilderUI(App):
         # and responsive. But in addition, it allows us to use threading events to
         # coordinate hanging and resuming execution, which is neat.
         # the registry with those parameters.
-        if self._start_node is None or self._end_node is None:
-            self.log_tracer(
-                Text(
-                    "Please select start and end nodes from the dropdowns above.",
-                    style="bold red",
-                )
-            )
-            return
         if not self._has_run:
             # NOTE: We can't hang on end node on first run, otherwise we won't
             # collect the full graph and we can't hang on re-run. So here we compute the
@@ -137,9 +128,12 @@ class BuilderUI(App):
                     f"Script called sys.exit() with code {exception}, treating as normal termination."
                 )
                 self.log_tracer(
-                    Text(f"Script exited with code {exception}.", style="yellow")
+                    Text(f"Script exited with code {exception}.", style="green")
                 )
                 self._has_run = True
+                graph = self._engine._call_tracker.single_edge_call_graph
+                self.query_one(TraceNodesPanel).set_call_graph(graph)
+                await self.query_one(CallGraph).set_call_graph(graph)
                 return
             # FIXME: How do we kill the thread upon exit or quick rerun?
         else:
@@ -216,8 +210,8 @@ class BuilderUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield TraceNodesPanel(self._call_graph, classes="box", id="trace_nodes")
-        yield CallGraph(self._call_graph, classes="box", id="graph")
+        yield TraceNodesPanel(classes="box", id="trace_nodes")
+        yield CallGraph(classes="box", id="graph")
         logs = Logger(classes="box", id="logger")
         logs.border_title = "User logs"
         logs.styles.border = ("solid", "gray")
@@ -244,10 +238,12 @@ class BuilderUI(App):
         except Exception:
             self.log_tracer(f"CALL: {k.module}.{k.func} -> {v.module}{v.func}")
         log.debug(f"Tracker callback called with k={k}, v={v}")
+        if not self._has_run:
+            return
         assert self._end_node is not None, (
-            "End node should not be None when tracker callback is called"
+            "End node should not be None when tracker callback is called after the first run."
         )
-        if v.equals_ignore_params(self._end_node) and self._has_run:
+        if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
             self._engine._call_tracker.resume_event.wait()
             self.hang(False)
@@ -297,7 +293,6 @@ class BuilderUI(App):
     def _reload(self) -> None:
         self.query_one(Tracer).clear()
         self.log_tracer("Reloading hot code...")
-        self.query_one(TraceNodesPanel).ready()
         self.query_one(Tracer).ready()
         self.query_one("#traceback", RichLog).clear()
         self.run_chain()
