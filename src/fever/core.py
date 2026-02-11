@@ -1,5 +1,4 @@
 import logging
-import pickle
 import sys
 import warnings
 from types import FrameType, ModuleType
@@ -432,10 +431,6 @@ class FeverCore:
         callback: Callable,
     ) -> None:
         self._call_tracker._on_exception = callback
-
-    def export_trace(self, path: str) -> None:
-        with open(path, "wb") as f:
-            pickle.dump(self._call_tracker.single_edge_call_graph, f)
 
     def get_cached_params(
         self, module_name: str, func_name: str

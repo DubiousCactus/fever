@@ -10,7 +10,6 @@ from typing_extensions import Annotated
 
 from fever.cache import Cache
 
-from .core import FeverCore
 from .tui.builder_ui import BuilderUI
 from .watcher import FeverWatcher
 
@@ -55,9 +54,12 @@ def watch(
     sys.path.insert(0, script_dir)
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
+    import debugpy
+
+    debugpy.listen(("127.0.0.1", 5679))
+    # print("Waiting for debugger attach...")
 
     def cleanup():
-        watcher.fever.export_trace("program_trace.pkl")
         watcher.stop()
         if os.getenv("FEVER_PLOT_TRACE", "0").lower() in ["1", "true"]:
             watcher.fever.plot_call_graph()
@@ -88,23 +90,21 @@ def debug(
     """
     Debug a program with the TUI.
     """
-    save_file = "program_trace.pkl"
-    if not os.path.isfile(save_file):
-        raise FileNotFoundError(
-            f"{save_file} not found. Please run the script with 'watch' command first to generate the program trace."
-        )
-    fever_engine = FeverCore(
+
+    import textual
+
+    textual.app.App.ALTERNATE_SCREEN = False
+    watcher = FeverWatcher(
         rich_console=console,
         cache=Cache(
             console=console,
-            mem_limit="1GB",
+            mem_limit="4GB",
             min_calls_threshold=0,
             min_time_s_threshold=0,
-            # enabled=False,
+            enabled=False,
         ),
-        propagate_trace_on_cache_hit=True,
-    )  # TODO: Unlimited cache with disk swapping
-    fever_engine.setup()
+    )
+    watcher.watch()
     command = [script] + (extra_args or [])
     sys.argv = command
     script_path = os.path.abspath(script)
@@ -115,9 +115,14 @@ def debug(
     sys.path.insert(0, script_dir)
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
+    # import debugpy
+    #
+    # debugpy.listen(("127.0.0.1", 5679))
+    # print("Waiting for debugger attach...")
+    # debugpy.wait_for_client()  # remove this if you don't want startup blocking
 
-    BuilderUI(fever_engine, script_path, save_file).run()
-    fever_engine.cleanup()
+    BuilderUI(watcher.fever, script_path, save_file).run()
+    watcher.stop()
 
 
 if __name__ == "__main__":
