@@ -154,7 +154,7 @@ class TraceNode:
         if self.params_hash is None:
             return f"{self.module}.{self.func}"
         else:
-            return f"{self.module}.{self.func}({hex(self.params_hash)[-5:]})"
+            return f"{self.module}.{self.func}(0x{hex(self.params_hash)[-5:]})"
 
     def equals_ignore_params(self, other: "TraceNode") -> bool:
         return self.module == other.module and self.func == other.func

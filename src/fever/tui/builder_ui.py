@@ -6,9 +6,7 @@ from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
 from typing import (
     Any,
-    Callable,
     Dict,
-    Iterable,
     Optional,
     Tuple,
 )
@@ -184,24 +182,6 @@ class BuilderUI(App):
             # FIXME: How do we kill the thread upon exit or quick rerun?
         log.debug("Script run completed.")
 
-        # for module in self._module_chain:
-        #     await self.query_one(LocalsPanel).clear()
-        #     self.query_one(Tracer).clear()
-        #     if module.is_frozen:
-        #         self.log_tracer(Text(f"Skipping frozen module {module}", style="green"))
-        #         continue
-        #     if module.to_reload or not self._reload_on_throw_only:
-        #         self.log_tracer(Text(f"Reloading module: {module}", style="yellow"))
-        #         await self._engine.reload_module(module)
-        #     self.log_tracer(Text(f"Running module: {module}", style="yellow"))
-        #     module.result = await self._engine.catch_and_hang(
-        #         module, self._module_chain
-        #     )
-        #     self.log_tracer(Text(f"{module} ran sucessfully!", style="bold green"))
-        #     self.print_info("Hanged.")
-        #     self.query_one("#traceback", RichLog).clear()
-        #     await self.hang(threw=False)
-
     def run_chain(self) -> None:
         """
         Run the chain of modules in a separate task. If a task is already running,
@@ -267,12 +247,10 @@ class BuilderUI(App):
         assert self._end_node is not None, (
             "End node should not be None when tracker callback is called"
         )
-        # TODO: We should consider the module as well
         if v.equals_ignore_params(self._end_node) and self._has_run:
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
             self._engine._call_tracker.resume_event.wait()
-            # self.query_one(CallGraph).highlight(v)
-            # self.hang(False)
+            self.hang(False)
 
     def exception_callback(self, exception: Exception) -> None:
         if exception.__traceback__ is None:
@@ -342,31 +320,6 @@ class BuilderUI(App):
             log.debug(
                 f"Select changed: start_node={self._start_node}, end_node={self._end_node}"
             )
-
-    def set_start_epoch(self, *args, **kwargs):
-        _ = args
-        _ = kwargs
-        pass
-
-    def track_training(self, iterable, total: int) -> Tuple[Iterable, Callable]:
-        _ = total
-
-        def noop(*args, **kwargs):
-            _ = args
-            _ = kwargs
-            pass
-
-        return iterable, noop
-
-    def track_validation(self, iterable, total: int) -> Tuple[Iterable, Callable]:
-        _ = total
-
-        def noop(*args, **kwargs):
-            _ = args
-            _ = kwargs
-            pass
-
-        return iterable, noop
 
     def log_tracer(self, message: str | RenderableType) -> None:
         self.query_one(Tracer).write(message)
