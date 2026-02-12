@@ -90,10 +90,6 @@ def debug(
     """
     Debug a program with the TUI.
     """
-
-    import textual
-
-    textual.app.App.ALTERNATE_SCREEN = False
     watcher = FeverWatcher(
         rich_console=console,
         cache=Cache(
