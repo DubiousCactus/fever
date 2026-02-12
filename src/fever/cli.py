@@ -117,7 +117,7 @@ def debug(
     # print("Waiting for debugger attach...")
     # debugpy.wait_for_client()  # remove this if you don't want startup blocking
 
-    BuilderUI(watcher.fever, script_path, save_file).run()
+    BuilderUI(watcher.fever, script_path).run()
     watcher.stop()
 
 

@@ -47,6 +47,14 @@ def _run_user_script(path: str) -> Tuple[str, Optional[Exception | Any]]:
     return ("ok", None)
 
 
+def _run_thread(func, *args, **kwargs) -> Tuple[Optional[Exception], Optional[Any]]:
+    try:
+        result = func(*args, **kwargs)
+    except Exception as e:
+        return e, None
+    return None, result
+
+
 class BuilderUI(App):
     TITLE = "Fever Builder TUI"
     CSS_PATH = "styles/builder_ui.css"
@@ -58,7 +66,7 @@ class BuilderUI(App):
         ("R", "reload", "Hot reload (all)"),
     ]
 
-    def __init__(self, engine: FeverCore, script_path: str, trace_path: str):
+    def __init__(self, engine: FeverCore, script_path: str):
         super().__init__()
         self._runner_task = None
         self._engine = engine
@@ -77,9 +85,7 @@ class BuilderUI(App):
         self._start_node, self._end_node = None, None
         self._has_run = False
         self._user_task: Optional[asyncio.Task] = None
-        log.debug(
-            f"BuilderUI initialized with script_path={script_path} and trace_path={trace_path}"
-        )
+        log.debug(f"BuilderUI initialized with script_path={script_path}")
 
     def _load_trace(self, path: str):
         # NOTE: For now let's use pickle, but I'll use blosc2 for compression.
@@ -155,24 +161,38 @@ class BuilderUI(App):
                 return
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
+                    _run_thread,
                     self._engine.get_cached_params,
                     self._start_node.module,
                     self._start_node.func,
                 )
             )
-            params = await self._user_task
+            exception, params = await self._user_task
+            if exception is not None:
+                self.exception_callback(exception)
             # TODO: Allow user to select the parameters from the trace
             # Use the first cached params for now, ignore the caller:
+            if len(params) == 0:
+                self.log_tracer(
+                    Text(
+                        "No cached parameters found for the selected start node.",
+                        style="bold red",
+                    )
+                )
+                return
             params = params[0][1]
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
+                    _run_thread,
                     self._engine.registry.invoke_wrapped,
                     self._start_node.module,
                     self._start_node.func,
                     params,
                 )
             )
-            await self._user_task
+            exception, _ = await self._user_task
+            if exception is not None:
+                self.exception_callback(exception)
             # FIXME: How do we kill the thread upon exit or quick rerun?
         log.debug("Script run completed.")
 
@@ -253,6 +273,7 @@ class BuilderUI(App):
             # INFO: Simple exception most likley raised by Fever
             self.log_tracer(
                 Text(
+                    "FeverError: ",
                     str(exception),
                     style="bold red",
                 )
@@ -260,30 +281,35 @@ class BuilderUI(App):
             formatted = "No traceback available."
         else:
             tb = exception.__traceback__.tb_next
-            assert tb is not None
-            frame = tb.tb_frame
-            try:
-                fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
-            except Exception:
+            if tb is None:
+                fpath = "?"
+                lineno = "?"
+                formatted = "Could not find traceback."
+            else:
+                frame = tb.tb_frame
+                lineno = tb.tb_lineno
                 try:
-                    fpath = Path(frame.f_code.co_filename).relative_to(
-                        Path.cwd(), walk_up=True
-                    )
+                    fpath = Path(frame.f_code.co_filename).relative_to(Path.cwd())
                 except Exception:
                     try:
-                        fpath = Path(frame.f_code.co_filename)
+                        fpath = Path(frame.f_code.co_filename).relative_to(
+                            Path.cwd(), walk_up=True
+                        )
                     except Exception:
-                        fpath = "UNKNOWN_PATH"
-            try:
-                stack = StackSummary.extract(walk_tb(tb))
-                formatted = "".join(reversed(stack.format()))
-            except Exception:
-                formatted = "Could not format stack trace."
+                        try:
+                            fpath = Path(frame.f_code.co_filename)
+                        except Exception:
+                            fpath = "?"
+                try:
+                    stack = StackSummary.extract(walk_tb(tb))
+                    formatted = "".join(reversed(stack.format()))
+                except Exception:
+                    formatted = "Could not format stack trace."
 
             self.log_tracer(
                 Text(
                     "".join(format_exception_only(exception)).strip()
-                    + f" (<-- {fpath}@L{tb.tb_lineno})",
+                    + f" (<-- {fpath}@L{lineno})",
                     style="bold red",
                 )
             )
