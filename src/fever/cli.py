@@ -55,10 +55,10 @@ def watch(
     sys.path.insert(0, script_dir)
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
-    import debugpy
+    if os.getenv("FEVER_DEBUG", "0").lower() in ["1", "true"]:
+        import debugpy
 
-    debugpy.listen(("127.0.0.1", 5679))
-    # print("Waiting for debugger attach...")
+        debugpy.listen(("127.0.0.1", 5679))
 
     def cleanup():
         watcher.stop()
@@ -111,11 +111,10 @@ def debug(
     sys.path.insert(0, script_dir)
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
-    # import debugpy
-    #
-    # debugpy.listen(("127.0.0.1", 5679))
-    # print("Waiting for debugger attach...")
-    # debugpy.wait_for_client()  # remove this if you don't want startup blocking
+    if os.getenv("FEVER_DEBUG", "0").lower() in ["1", "true"]:
+        import debugpy
+
+        debugpy.listen(("127.0.0.1", 5679))
 
     ui = BuilderUI(watcher.fever, script_path)
     watcher.set_console_interface(
