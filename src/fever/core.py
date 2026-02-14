@@ -85,6 +85,13 @@ class FeverCore:
             propagate_trace_on_cache_hit=propagate_trace_on_cache_hit,
         )
 
+    def set_console_interface(
+        self, console_if: ConsoleInterface, verbosity: Optional[int] = None
+    ):
+        self._console_if = console_if
+        if verbosity is not None:
+            self._verbosity = verbosity
+
     def setup(self, caller_frame: Optional[FrameType] = None):
         """
         Start tracking user imports and function/method calls in real time. Any `import`

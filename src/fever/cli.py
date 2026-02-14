@@ -9,6 +9,7 @@ from rich.console import Console
 from typing_extensions import Annotated
 
 from fever.cache import Cache
+from fever.utils import ConsoleInterface
 
 from .tui.builder_ui import BuilderUI
 from .watcher import FeverWatcher
@@ -91,7 +92,6 @@ def debug(
     Debug a program with the TUI.
     """
     watcher = FeverWatcher(
-        rich_console=console,
         cache=Cache(
             console=console,
             mem_limit="4GB",
@@ -117,7 +117,12 @@ def debug(
     # print("Waiting for debugger attach...")
     # debugpy.wait_for_client()  # remove this if you don't want startup blocking
 
-    BuilderUI(watcher.fever, script_path).run()
+    ui = BuilderUI(watcher.fever, script_path)
+    watcher.set_console_interface(
+        ConsoleInterface(ui_logger=ui.log_fever_event),
+        verbosity=1,
+    )
+    ui.run()
     watcher.stop()
 
 

@@ -22,7 +22,6 @@ from fever.tui.widgets.call_graph import CallGraph
 from fever.tui.widgets.nodes_panel import TraceNodesPanel
 from fever.types import TraceNode
 
-from .widgets.files_tree import FilesTree
 from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
 from .widgets.tracer import Tracer
@@ -236,10 +235,12 @@ class BuilderUI(App):
         logs.border_title = "User logs"
         logs.styles.border = ("solid", "gray")
         yield logs
-        ftree = FilesTree(classes="box")
-        ftree.border_title = "Project tree"
-        ftree.styles.border = ("solid", "gray")
-        yield ftree
+        fever_logs = RichLog(
+            classes="box", id="fever_logs", highlight=True, markup=True, wrap=True
+        )
+        fever_logs.border_title = "Fever logs"
+        fever_logs.styles.border = ("solid", "gray")
+        yield fever_logs
         lcls = LocalsPanel(classes="box")
         lcls.styles.border = ("solid", "gray")
         yield lcls
@@ -344,6 +345,10 @@ class BuilderUI(App):
 
     def log_tracer(self, message: str | RenderableType) -> None:
         self.query_one(Tracer).write(message)
+
+    def log_fever_event(self, message: str, style: str = "bold magenta") -> None:
+        self.query_one("#fever_logs", RichLog).write(Text(message, style=style))
+        log.debug(f"Fever event: {message}")
 
     async def set_locals(self, locals: Dict[str, Any], frame_name: str) -> None:
         self.query_one(LocalsPanel).set_frame_name(frame_name)

@@ -27,6 +27,14 @@ class FeverWatcher:
         self.fever = FeverCore(self._console_if.console, cache=cache)
         self._running = False
 
+    def set_console_interface(
+        self, console_if: ConsoleInterface, verbosity: Optional[int] = None
+    ):
+        self._console_if = console_if
+        self.fever.set_console_interface(console_if)
+        if verbosity is not None:
+            self._verbosity = verbosity
+
     def watch(self):
         self._running = True
         client = pywatchman.client(timeout=10.0)
