@@ -140,7 +140,6 @@ class BuilderUI(App):
                 self.query_one(TraceNodesPanel).set_call_graph(graph)
                 await self.query_one(CallGraph).set_call_graph(graph)
                 return
-            # NOTE: Thread termination is now handled by stop_event checks in call_tracker
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
@@ -212,6 +211,9 @@ class BuilderUI(App):
             self._runner_task.cancel()
             self._runner_task = None
         self._runner_task = asyncio.create_task(self._run_chain(), name="run_chain")
+
+    def on_mount(self):
+        self.run_chain()
 
     async def action_quit(self) -> None:
         log.debug(
