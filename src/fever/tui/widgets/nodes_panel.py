@@ -32,7 +32,7 @@ class TraceNodesPanel(Static):
         )
         yield Horizontal(
             Label("End node:"),
-            Select([], id="end_node", disabled=True, allow_blank=True),
+            Select([], id="end_node", disabled=True),
         )
         yield Label("Select a start node first.", id="hint")
         no_descendants_label = Label(

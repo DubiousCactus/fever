@@ -144,13 +144,10 @@ class BuilderUI(App):
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
-            self.log_tracer(
-                f"Second run: running with cached results from {self._start_node} to {self._end_node}..."
-            )
             self._start_node, self._end_node = self.query_one(
                 TraceNodesPanel
             ).trace_nodes
-            if self._start_node is None or self._end_node is None:
+            if self._start_node is Select.BLANK or self._end_node is Select.BLANK:
                 self.log_tracer(
                     Text(
                         "Please select start and end nodes from the dropdowns above.",
@@ -158,6 +155,9 @@ class BuilderUI(App):
                     )
                 )
                 return
+            self.log_tracer(
+                f"Second run: running with cached results from {self._start_node} to {self._end_node}..."
+            )
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
                     _run_thread,
