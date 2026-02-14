@@ -175,3 +175,8 @@ class TraceNode:
 class FeverRegistryError(Exception):
     def __str__(self) -> str:
         return "FeverRegistryError: " + super().__str__()
+
+
+class FeverTrackerError(Exception):
+    def __str__(self) -> str:
+        return "FeverTrackerError: " + super().__str__()

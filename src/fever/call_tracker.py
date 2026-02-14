@@ -19,7 +19,13 @@ import networkx as nx
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
 from fever.cache import Cache
 from fever.registry import Registry
-from fever.types import FeverParameters, FeverRegistryError, FeverWarning, TraceNode
+from fever.types import (
+    FeverParameters,
+    FeverRegistryError,
+    FeverTrackerError,
+    FeverWarning,
+    TraceNode,
+)
 from fever.utils import ConsoleInterface
 
 
@@ -132,11 +138,14 @@ class CallTracker:
                 log.debug("Stop event is set, raising SystemExit to terminate thread")
                 raise SystemExit("Thread termination requested")
             caller_frame = sys._getframe(1)
-            caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
-            caller_module = (
-                inspect.getmodulename(caller_frame.f_code.co_filename)
-                or "CALLER_MODULE_UNKNOWN"
-            )
+            caller_name = getattr(caller_frame.f_code, "co_qualname")
+            if caller_name is None:
+                raise FeverTrackerError("Could not determine caller name from frame")
+            caller_module = inspect.getmodulename(caller_frame.f_code.co_filename)
+            if caller_module is None:
+                raise FeverTrackerError(
+                    f"Could not determine caller module for {caller_name} from frame"
+                )
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "
@@ -255,7 +264,9 @@ class CallTracker:
                 # Wait for resume, but check stop_event periodically
                 while not self.resume_event.is_set():
                     if self.stop_event.is_set():
-                        log.debug("Stop event detected while waiting on exception, terminating thread")
+                        log.debug(
+                            "Stop event detected while waiting on exception, terminating thread"
+                        )
                         raise SystemExit("Thread termination requested")
                     self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
