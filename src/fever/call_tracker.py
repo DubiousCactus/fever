@@ -127,9 +127,10 @@ class CallTracker:
                 f"Tracking call to '{func.name}' defined in '{module.name}' with {len(args)} args and {len(kwargs)} kwargs"
             )
             self.resume_event.clear()
-            # if self.stop_event.is_set():
-            #     # sys.settrace(None)
-            #     raise Exception("Over.")
+            # Check if we should stop execution (e.g., on app exit or reload)
+            if self.stop_event.is_set():
+                log.debug("Stop event is set, raising SystemExit to terminate thread")
+                raise SystemExit("Thread termination requested")
             caller_frame = sys._getframe(1)
             caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
             caller_module = (
@@ -251,7 +252,12 @@ class CallTracker:
                 result = func_ptr(*args, **kwargs)
             except Exception as e:
                 self._on_exception(e)
-                self.resume_event.wait()
+                # Wait for resume, but check stop_event periodically
+                while not self.resume_event.is_set():
+                    if self.stop_event.is_set():
+                        log.debug("Stop event detected while waiting on exception, terminating thread")
+                        raise SystemExit("Thread termination requested")
+                    self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
             log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
             # WARN: The caller object will change as the caller function is recompiled!

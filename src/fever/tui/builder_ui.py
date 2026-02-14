@@ -141,7 +141,7 @@ class BuilderUI(App):
                 self.query_one(TraceNodesPanel).set_call_graph(graph)
                 await self.query_one(CallGraph).set_call_graph(graph)
                 return
-            # FIXME: How do we kill the thread upon exit or quick rerun?
+            # NOTE: Thread termination is now handled by stop_event checks in call_tracker
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
@@ -193,7 +193,7 @@ class BuilderUI(App):
             exception, _ = await self._user_task
             if exception is not None:
                 self.exception_callback(exception)
-            # FIXME: How do we kill the thread upon exit or quick rerun?
+            # NOTE: Thread termination is now handled by stop_event checks in call_tracker
         log.debug("Script run completed.")
 
     def run_chain(self) -> None:
@@ -202,10 +202,12 @@ class BuilderUI(App):
         cancel it first. This can happen if the user triggers a reload while the chain
         has hung.
         """
-        if self._user_task:
-            self._engine._call_tracker.resume_event.clear()
+        if self._user_task and not self._user_task.done():
+            # Signal the user thread to stop
             self._engine._call_tracker.stop_event.set()
-            log.debug("User task cancelled.")
+            # Unblock any waiting threads
+            self._engine._call_tracker.resume_event.set()
+            log.debug("Stop and resume events set, cancelling user task...")
             self._user_task.cancel()
         if self._runner_task is not None:
             self._runner_task.cancel()
@@ -216,12 +218,19 @@ class BuilderUI(App):
         log.debug(
             "Quitting application, cancelling runner task and user task if they exist..."
         )
-        if self._user_task:
-            self._engine._call_tracker.resume_event.clear()
+        if self._user_task and not self._user_task.done():
+            # Signal the user thread to stop
             self._engine._call_tracker.stop_event.set()
-            log.debug("User task cancelled.")
-            await self._user_task
+            # Unblock any waiting threads
+            self._engine._call_tracker.resume_event.set()
+            log.debug("Stop and resume events set to terminate user task")
+            # Cancel the task
             self._user_task.cancel()
+            # Wait briefly for graceful termination, then force if needed
+            try:
+                await asyncio.wait_for(self._user_task, timeout=1.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                log.debug("User task cancelled or timed out")
         if self._runner_task is not None:
             self._runner_task.cancel()
             self._runner_task = None
@@ -265,7 +274,12 @@ class BuilderUI(App):
         )
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
-            self._engine._call_tracker.resume_event.wait()
+            # Wait for resume, but check stop_event periodically
+            while not self._engine._call_tracker.resume_event.is_set():
+                if self._engine._call_tracker.stop_event.is_set():
+                    log.debug("Stop event detected in tracker callback, exiting")
+                    raise SystemExit("Thread termination requested")
+                self._engine._call_tracker.resume_event.wait(timeout=0.1)
             self.hang(False)
 
     def exception_callback(self, exception: Exception) -> None:
