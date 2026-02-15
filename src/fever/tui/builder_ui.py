@@ -271,6 +271,7 @@ class BuilderUI(App):
             self.log_tracer(f"CALL: {k.module}.{k.func} -> {v.module}{v.func}")
         log.debug(f"Tracker callback called with k={k}, v={v}")
         if not self._has_run:
+            # self.query_one("#graph", CallGraph).update(k, v)
             return
         assert self._end_node is not None, (
             "End node should not be None when tracker callback is called after the first run."
