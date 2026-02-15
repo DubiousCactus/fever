@@ -9,8 +9,6 @@ from copy import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 
 class FeverWarning(Warning):
     pass
@@ -75,6 +73,14 @@ class FeverParameters:
     __slots__ = "args", "kwargs", "hash"
 
     def __init__(self, args: tuple, kwargs: dict):
+        def is_torch_tensor(x: Any) -> bool:
+            try:
+                import torch
+
+                return isinstance(x, torch.Tensor)
+            except ImportError:
+                return False
+
         def make_immutable(x: Any) -> object:
             if isinstance(x, dict):
                 return frozenset(
@@ -86,14 +92,37 @@ class FeverParameters:
                 return frozenset([make_immutable(a) for a in x])
             elif isinstance(x, tuple):
                 return tuple([make_immutable(a) for a in x])
-            elif isinstance(x, np.ndarray):
-                return x.tobytes()
+            elif hasattr(x, "tobytes"):
+                try:
+                    return x.tobytes()
+                except Exception:
+                    try:
+                        return x.tobytes
+                    except Exception:
+                        return str(x)
+            elif is_torch_tensor(x):
+                import torch
+
+                try:
+                    return torch.hash_tensor(x).item()
+                except Exception:
+                    return tuple([make_immutable(a) for a in x.tolist()])
             else:
                 return x
 
+        # Source - https://stackoverflow.com/a/17795199
+        # Posted by glarrain, modified by community. See post 'Timeline' for change history
+        # Retrieved 2026-02-15, License - CC BY-SA 4.0
+        def is_builtin_class_instance(obj):
+            return obj.__class__.__module__ == "builtins"
+
         def hash_or_hash(x: Any) -> int:
             h = -1
-            if isinstance(x, Iterable) and not isinstance(x, str):
+            if (
+                is_builtin_class_instance(x)
+                and isinstance(x, Iterable)
+                and not isinstance(x, str)
+            ):
                 for y in x:
                     res = hash_or_hash(y)
                     h += res
