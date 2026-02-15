@@ -85,6 +85,14 @@ def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
     return caller_obj
 
 
+def get_caller_frame(frame: FrameType) -> FrameType:
+    while frame:
+        if frame.f_code.co_name != "fever_wrapper":
+            break
+        frame = frame.f_back
+    return frame
+
+
 class CallTracker:
     def __init__(
         self,
@@ -137,16 +145,28 @@ class CallTracker:
             if self.stop_event.is_set():
                 log.debug("Stop event is set, raising SystemExit to terminate thread")
                 raise SystemExit("Thread termination requested")
-            caller_frame = sys._getframe(1)
+            callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
+            caller_frame = get_caller_frame(sys._getframe())
+            if caller_frame is None:
+                raise FeverTrackerError("Could not determine caller frame")
             caller_name = getattr(caller_frame.f_code, "co_qualname")
             if caller_name is None:
                 raise FeverTrackerError("Could not determine caller name from frame")
             caller_module = inspect.getmodulename(caller_frame.f_code.co_filename)
             if caller_module is None:
-                raise FeverTrackerError(
-                    f"Could not determine caller module for {caller_name} from frame"
-                )
-            callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
+                # NOTE: This happens when we hot compiled code! One way to find the caller
+                # module is to go one more frame up, which should be this wrapper. In
+                # its locals we should find the module.
+                try:
+                    wrapper_frame = caller_frame.f_back
+                    caller_fever_module: Optional[FeverModule] = (
+                        wrapper_frame.f_locals.get("module", None)
+                    )
+                    caller_module = caller_fever_module.name
+                except Exception:
+                    raise FeverTrackerError(
+                        f"Could not determine caller module for {caller_name} from frame"
+                    )
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "
                 + f"was called by '{caller_name}' at line {caller_frame.f_lineno}",
