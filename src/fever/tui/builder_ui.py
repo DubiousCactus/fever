@@ -302,23 +302,10 @@ class BuilderUI(App):
                 except Exception:
                     formatted = "Could not format stack trace."
 
-                # await self.query_one(LocalsPanel).add_locals(tb.tb_frame.f_locals)
-                # locals_panel = self.query_one(LocalsPanel)
-                # task = asyncio.create_task(
-                #     asyncio.to_thread(
-                #         _catch_exceptions_in_thread,
-                #         locals_panel.add_locals,
-                #         tb.tb_frame.f_locals,
-                #     )
-                # )
-                # exception, _ = await self._user_task
-
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                _ = loop.create_task(
-                    self.set_locals(frame.f_locals, frame.f_code.co_name)
+                # Call the async set_locals method from the worker thread.
+                # We use call_from_thread to ensure it runs on the main event loop.
+                self.call_from_thread(
+                    self.set_locals, frame.f_locals, frame.f_code.co_name
                 )
             self.log_tracer(
                 Text(
