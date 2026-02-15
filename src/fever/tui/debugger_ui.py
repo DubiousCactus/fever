@@ -49,7 +49,7 @@ def _catch_exceptions_in_thread(
 
 class TraceDebugger(App):
     TITLE = "Fever Trace Debugger"
-    CSS_PATH = "styles/builder_ui.css"
+    CSS_PATH = "styles/ui.css"
 
     BINDINGS = [
         ("q", "quit", "Quit"),
