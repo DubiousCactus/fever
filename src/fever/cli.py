@@ -119,7 +119,8 @@ def debug(
     ui = BuilderUI(watcher.fever, script_path)
     watcher.set_console_interface(
         ConsoleInterface(ui_logger=ui.log_fever_event),
-        verbosity=1,
+        verbosity=0,
+        core_verbosity=1,
     )
     ui.run()
     watcher.stop()

@@ -28,10 +28,13 @@ class FeverWatcher:
         self._running = False
 
     def set_console_interface(
-        self, console_if: ConsoleInterface, verbosity: Optional[int] = None
+        self,
+        console_if: ConsoleInterface,
+        verbosity: Optional[int] = None,
+        core_verbosity: Optional[int] = None,
     ):
         self._console_if = console_if
-        self.fever.set_console_interface(console_if)
+        self.fever.set_console_interface(console_if, verbosity=core_verbosity)
         if verbosity is not None:
             self._verbosity = verbosity
 
@@ -72,10 +75,11 @@ class FeverWatcher:
                     files = msg.get("files", [])
                     if files:
                         # Call async callback safely
-                        self._console_if.print(
-                            f"Changed files: {[os.path.basename(f['name']) for f in files]}",
-                            style="green on black",
-                        )
+                        if self._verbosity > 0:
+                            self._console_if.print(
+                                f"Changed files: {[os.path.basename(f['name']) for f in files]}",
+                                style="green on black",
+                            )
                         self.fever.reload(
                             [
                                 os.path.basename(f["name"]).replace(".py", "")
