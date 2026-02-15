@@ -56,30 +56,26 @@ class TraceNodesPanel(Static):
             self.query_one("#no_descendants_hint", Label).visible = False
             end_node.set_options([(str(n), n) for n in descendants])
             end_node.disabled = False
-        self.due()
 
     def on_mount(self):
         self.loading = True
 
-    # TODO: Hang and ready should be made a mixin
-    def due(self) -> None:
-        # TODO: Blink the border
-        self.styles.border = ("dashed", "yellow")
-        self.styles.opacity = 0.8
-        self.border_title = "Frozen modules: due for reloading"
-
     def hang(self, threw: bool) -> None:
         if threw:
             self.styles.border = ("dashed", "red")
-            self.border_title = "Frozen modules: exception was thrown"
+            self.border_title = "Trace nodes: exception was thrown"
+            self.query_one("#start_node", Select).disabled = True
+            self.query_one("#end_node", Select).disabled = True
         else:
-            self.due()
+            self.ready()
 
     def ready(self) -> None:
         self.loading = False
         self.styles.border = ("solid", "green")
         self.styles.opacity = 1.0
-        self.border_title = "Frozen modules: active"
+        self.border_title = "Trace nodes: active"
+        self.query_one("#start_node", Select).disabled = False
+        self.query_one("#end_node", Select).disabled = False
 
     @property
     def trace_nodes(self) -> Tuple[TraceNode, TraceNode]:

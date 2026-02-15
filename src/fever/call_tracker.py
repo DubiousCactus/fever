@@ -109,7 +109,7 @@ class CallTracker:
         self._registry = registry
         self._tracking_mode = tracking_mode
         self._cache = cache or Cache(console, enabled=False)
-        self._on_new_call: Callable[[object, object], None] = on_new_call
+        self._on_new_call: Callable[[TraceNode, TraceNode], None] = on_new_call
         self._on_exception: Callable = on_exception
         self.resume_event = threading.Event()
         self.stop_event = threading.Event()

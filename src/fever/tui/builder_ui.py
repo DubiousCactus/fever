@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import pickle
 import runpy
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
@@ -64,22 +63,11 @@ class BuilderUI(App):
         self._engine = engine
         self._engine.set_on_new_call_callback(self.tracker_callback)
         self._engine.set_on_exception_callback(self.exception_callback)
-        # INFO: Here's the plan: during watch phase we can export the call graph. During
-        # debug phase, we hook up fever, import main script which will have a chain
-        # reaction of monkey-patching every callable, then load the call graph. With the
-        # call graph and recorded parameters, we can then re-run the exact same trace.
-        # But we cache every result ofc. Then the user selects start/end nodes, and
-        # the debugger can just rerun through the set circuit. Voila.
         self._script_path = script_path
         self._start_node, self._end_node = None, None
         self._has_run = False
         self._user_task: Optional[asyncio.Task] = None
         log.debug(f"BuilderUI initialized with script_path={script_path}")
-
-    def _load_trace(self, path: str):
-        # NOTE: For now let's use pickle, but I'll use blosc2 for compression.
-        with open(path, "rb") as f:
-            return pickle.load(f)
 
     async def _run_trace_threaded(self) -> None:
         """
@@ -126,7 +114,6 @@ class BuilderUI(App):
                 graph = self._engine._call_tracker.single_edge_call_graph
                 self.query_one(TraceNodesPanel).set_call_graph(graph)
                 await self.query_one(CallGraph).set_call_graph(graph)
-                return
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
@@ -180,6 +167,7 @@ class BuilderUI(App):
                 self.exception_callback(exception)
             # NOTE: Thread termination is now handled by stop_event checks in call_tracker
         log.debug("Script run completed.")
+        self.hang(False)
 
     def run_trace(self) -> None:
         """
@@ -261,19 +249,20 @@ class BuilderUI(App):
         log.debug(f"Tracker callback called with k={k}, v={v}")
         if not self._has_run:
             # self.query_one("#graph", CallGraph).update(k, v)
+            self.hang(False)
             return
         assert self._end_node is not None, (
             "End node should not be None when tracker callback is called after the first run."
         )
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
+            self.hang(False)
             # Wait for resume, but check stop_event periodically
             while not self._engine._call_tracker.resume_event.is_set():
                 if self._engine._call_tracker.stop_event.is_set():
                     log.debug("Stop event detected in tracker callback, exiting")
                     raise SystemExit("Thread termination requested")
                 self._engine._call_tracker.resume_event.wait(timeout=0.1)
-            self.hang(False)
 
     def exception_callback(self, exception: Exception) -> None:
         if exception.__traceback__ is None:
@@ -325,21 +314,10 @@ class BuilderUI(App):
 
     def action_reload(self) -> None:
         self.query_one(Tracer).clear()
-        self.log_tracer("Reloading hot code...")
-        self.query_one(Tracer).ready()
+        self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
+        self.query_one(Tracer).ready()
         self.run_trace()
-
-    def on_select_changed(self, event: Select.Changed):
-        if event.select.id == "start_node":
-            self._start_node, self._end_node = None, None
-        if event.select.id == "end_node":
-            self._start_node, self._end_node = self.query_one(
-                TraceNodesPanel
-            ).trace_nodes
-            log.debug(
-                f"Select changed: start_node={self._start_node}, end_node={self._end_node}"
-            )
 
     def log_tracer(self, message: str | RenderableType) -> None:
         self.query_one(Tracer).write(message)
@@ -358,6 +336,7 @@ class BuilderUI(App):
         because the function ran successfully.
         """
         self.query_one(Tracer).hang(threw)
+        self.query_one(TraceNodesPanel).hang(threw)
         # self.query_one(CallGraph).hang(threw)
 
     def print_err(self, msg: str | Exception) -> None:

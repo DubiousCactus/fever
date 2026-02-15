@@ -14,7 +14,7 @@ class Tracer(Static):
     def hang(self, threw: bool) -> None:
         # TODO: Blink the border
         self.styles.border = ("dashed", "red" if threw else "yellow")
-        self.border_title = "Exception trace: hanged" + (
+        self.border_title = "Exception trace: hanged " + (
             "(exception thrown)" if threw else "(no exception thrown)"
         )
 
