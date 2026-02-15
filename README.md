@@ -97,4 +97,4 @@ You can now run it as `uv run fever <command>`.
 - [ ] v0.0.7: Add a tool executable to wrap a script and launch the TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
 - [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.)
-- [ ] v0.1.0: Hot code reloading system with smart caching and PDB++ TUI + hang-on-throw
+- [ ] v0.1.0: Live trace graph update for the TUI
