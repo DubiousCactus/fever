@@ -224,7 +224,6 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
-            self._on_new_call(k, v)
             # WARN: If the function code hash has changed, we should skip the cache! But
             # if we reload, wouldn't the function pointer change anyway?
             if (cached_result := self._cache.get(func_ptr, params)) is not None:
@@ -291,6 +290,7 @@ class CallTracker:
                     self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
             log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
+            self._on_new_call(k, v)
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
             # want the caller to be the function name instead of the pointer, so we
