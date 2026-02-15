@@ -302,6 +302,24 @@ class BuilderUI(App):
                 except Exception:
                     formatted = "Could not format stack trace."
 
+                # await self.query_one(LocalsPanel).add_locals(tb.tb_frame.f_locals)
+                # locals_panel = self.query_one(LocalsPanel)
+                # task = asyncio.create_task(
+                #     asyncio.to_thread(
+                #         _catch_exceptions_in_thread,
+                #         locals_panel.add_locals,
+                #         tb.tb_frame.f_locals,
+                #     )
+                # )
+                # exception, _ = await self._user_task
+
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    loop = asyncio.new_event_loop()
+                _ = loop.create_task(
+                    self.set_locals(frame.f_locals, frame.f_code.co_name)
+                )
             self.log_tracer(
                 Text(
                     "".join(format_exception_only(exception)).strip()
@@ -316,6 +334,7 @@ class BuilderUI(App):
         self.query_one(Tracer).clear()
         self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
+        self.query_one(LocalsPanel).clear()
         self.query_one(Tracer).ready()
         self.run_trace()
 
@@ -327,8 +346,9 @@ class BuilderUI(App):
         log.debug(f"Fever event: {message}")
 
     async def set_locals(self, locals: Dict[str, Any], frame_name: str) -> None:
-        self.query_one(LocalsPanel).set_frame_name(frame_name)
-        await self.query_one(LocalsPanel).add_locals(locals)
+        panel = self.query_one(LocalsPanel)
+        panel.set_frame_name(frame_name)
+        await panel.add_locals(locals)
 
     def hang(self, threw: bool) -> None:
         """
