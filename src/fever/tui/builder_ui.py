@@ -36,20 +36,14 @@ log = logging.getLogger("fever")
 log.debug("Engine initialized")
 
 
-def _run_user_script(path: str) -> Tuple[str, Optional[Exception | Any]]:
-    try:
-        runpy.run_path(path, run_name="__main__")
-    except SystemExit as e:
-        return ("exit", e.code)
-    except Exception as e:
-        return ("error", e)
-    return ("ok", None)
-
-
-def _run_thread(func, *args, **kwargs) -> Tuple[Optional[Exception], Optional[Any]]:
+def _catch_exceptions_in_thread(
+    func, *args, **kwargs
+) -> Tuple[Optional[Exception | SystemExit], Optional[Any]]:
     try:
         result = func(*args, **kwargs)
     except Exception as e:
+        return e, None
+    except SystemExit as e:
         return e, None
     return None, result
 
@@ -61,8 +55,7 @@ class BuilderUI(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("d", "toggle_dark", "Toggle dark mode"),
-        ("r", "forward_reload", "Hot reload (thrown only)"),
-        ("R", "reload", "Hot reload (all)"),
+        ("r", "reload", "Hot reload"),
     ]
 
     def __init__(self, engine: FeverCore, script_path: str):
@@ -78,9 +71,6 @@ class BuilderUI(App):
         # But we cache every result ofc. Then the user selects start/end nodes, and
         # the debugger can just rerun through the set circuit. Voila.
         self._script_path = script_path
-        # FIXME: We seem to be dealing with the same issue of pickling arbitrary call
-        # parameters. To go around this, we can skip them for now.
-        self._reload_on_throw_only = True  # NOTE: Leave this to true for the first run or it will attempt to reload on the first run, which is not really desireable
         self._start_node, self._end_node = None, None
         self._has_run = False
         self._user_task: Optional[asyncio.Task] = None
@@ -91,19 +81,14 @@ class BuilderUI(App):
         with open(path, "rb") as f:
             return pickle.load(f)
 
-    async def _run_chain(self) -> None:
+    async def _run_trace_threaded(self) -> None:
         """
-        Run the chain of modules, reloading them if necessary. For each module, run it
-        and catch exceptions, hanging the UI if an exception is thrown. If no exception
-        is thrown, hang the UI to indicate success and cache the result such that the
-        module can be frozen by the user. If a module is frozen, retrieve its cached
-        result and skip execution. Since a module's input may depend on the output of
-        previous modules, if a module is frozen, ensure that all previous modules are
-        also frozen and their outputs are cached.
-        When a module throws, the UI should hang and display the traceback in the
-        traceback panel. The user can then fix the code and reload the chain, which
-        marks the current module for reloading. When we run the chain again, marked
-        modules will be reloaded and re-executed.
+        Run the execution trace from start to end node, with Fever hot reloading. For
+        each node, run it and catch exceptions, hanging the UI if an exception is
+        thrown. If no exception is thrown at the end of the trace, hang the UI to
+        indicate success. When a module throws, the UI should hang and display the
+        traceback in the traceback panel. The user can then fix the code and reload the
+        trace.
         """
         log.debug("Starting to run the chain of modules...")
         self._engine._call_tracker.stop_event.clear()
@@ -119,16 +104,18 @@ class BuilderUI(App):
             # entire call graph lazily and fill up the cache.
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
-                    _run_user_script,
+                    _catch_exceptions_in_thread,
+                    runpy.run_path,
                     self._script_path,
+                    run_name="__main__",
                 )
             )
-            status, exception = await self._user_task
-            if status == "error":
+            exception, _ = await self._user_task
+            if exception is not None and isinstance(exception, Exception):
                 log.debug(f"Script raised an exception: {exception}")
                 self.exception_callback(exception)
                 return
-            elif status == "exit":
+            elif exception is None or isinstance(exception, SystemExit):
                 log.debug(
                     f"Script called sys.exit() with code {exception}, treating as normal termination."
                 )
@@ -159,14 +146,14 @@ class BuilderUI(App):
             )
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
-                    _run_thread,
+                    _catch_exceptions_in_thread,
                     self._engine.get_cached_params,
                     self._start_node.module,
                     self._start_node.func,
                 )
             )
             exception, params = await self._user_task
-            if exception is not None:
+            if exception is not None and isinstance(exception, Exception):
                 self.exception_callback(exception)
             # TODO: Allow user to select the parameters from the trace
             # Use the first cached params for now, ignore the caller:
@@ -181,7 +168,7 @@ class BuilderUI(App):
             params = params[0][1]
             self._user_task = asyncio.create_task(
                 asyncio.to_thread(
-                    _run_thread,
+                    _catch_exceptions_in_thread,
                     self._engine.registry.invoke_wrapped,
                     self._start_node.module,
                     self._start_node.func,
@@ -189,14 +176,14 @@ class BuilderUI(App):
                 )
             )
             exception, _ = await self._user_task
-            if exception is not None:
+            if exception is not None and isinstance(exception, Exception):
                 self.exception_callback(exception)
             # NOTE: Thread termination is now handled by stop_event checks in call_tracker
         log.debug("Script run completed.")
 
-    def run_chain(self) -> None:
+    def run_trace(self) -> None:
         """
-        Run the chain of modules in a separate task. If a task is already running,
+        Run the trace from start node to end node in a separate task. If a task is already running,
         cancel it first. This can happen if the user triggers a reload while the chain
         has hung.
         """
@@ -210,10 +197,12 @@ class BuilderUI(App):
         if self._runner_task is not None:
             self._runner_task.cancel()
             self._runner_task = None
-        self._runner_task = asyncio.create_task(self._run_chain(), name="run_chain")
+        self._runner_task = asyncio.create_task(
+            self._run_trace_threaded(), name="run_chain"
+        )
 
     def on_mount(self):
-        self.run_chain()
+        self.run_trace()
 
     async def action_quit(self) -> None:
         log.debug(
@@ -334,20 +323,12 @@ class BuilderUI(App):
         self.query_one("#traceback", RichLog).write(formatted)
         self.hang(True)
 
-    def _reload(self) -> None:
+    def action_reload(self) -> None:
         self.query_one(Tracer).clear()
         self.log_tracer("Reloading hot code...")
         self.query_one(Tracer).ready()
         self.query_one("#traceback", RichLog).clear()
-        self.run_chain()
-
-    def action_reload(self) -> None:
-        self._reload_on_throw_only = False
-        self._reload()
-
-    def action_forward_reload(self) -> None:
-        self._reload_on_throw_only = True
-        self._reload()
+        self.run_trace()
 
     def on_select_changed(self, event: Select.Changed):
         if event.select.id == "start_node":
