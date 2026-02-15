@@ -78,6 +78,7 @@ class BuilderUI(App):
         traceback in the traceback panel. The user can then fix the code and reload the
         trace.
         """
+        await self.query_one(LocalsPanel).clear()
         log.debug("Starting to run the chain of modules...")
         self._engine._call_tracker.stop_event.clear()
         self.log_tracer(Text(f"Running {self._script_path}...", style="yellow"))
@@ -321,7 +322,6 @@ class BuilderUI(App):
         self.query_one(Tracer).clear()
         self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
-        self.query_one(LocalsPanel).clear()
         self.query_one(Tracer).ready()
         self.run_trace()
 
