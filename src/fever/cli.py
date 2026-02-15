@@ -11,7 +11,7 @@ from typing_extensions import Annotated
 from fever.cache import Cache
 from fever.utils import ConsoleInterface
 
-from .tui.builder_ui import BuilderUI
+from .tui.debugger_ui import TraceDebugger
 from .watcher import FeverWatcher
 
 app = typer.Typer()
@@ -116,7 +116,7 @@ def debug(
 
         debugpy.listen(("127.0.0.1", 5679))
 
-    ui = BuilderUI(watcher.fever, script_path)
+    ui = TraceDebugger(watcher.fever, script_path)
     watcher.set_console_interface(
         ConsoleInterface(ui_logger=ui.log_fever_event),
         verbosity=0,

@@ -47,8 +47,8 @@ def _catch_exceptions_in_thread(
     return None, result
 
 
-class BuilderUI(App):
-    TITLE = "Fever Builder TUI"
+class TraceDebugger(App):
+    TITLE = "Fever Trace Debugger"
     CSS_PATH = "styles/builder_ui.css"
 
     BINDINGS = [
@@ -67,7 +67,7 @@ class BuilderUI(App):
         self._start_node, self._end_node = None, None
         self._has_run = False
         self._user_task: Optional[asyncio.Task] = None
-        log.debug(f"BuilderUI initialized with script_path={script_path}")
+        log.debug(f"TraceDebugger initialized with script_path={script_path}")
 
     async def _run_trace_threaded(self) -> None:
         """
