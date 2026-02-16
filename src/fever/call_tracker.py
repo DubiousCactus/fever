@@ -290,52 +290,52 @@ class CallTracker:
             self._execution_stack.append(v)
             
             start = timeit.default_timer()
-            result = None
             exception_occurred = False
             try:
-                result = func_ptr(*args, **kwargs)
-            except Exception as e:
-                exception_occurred = True
-                self._on_exception(e)
-                # Wait for resume, but check stop_event periodically
-                while not self.resume_event.is_set():
-                    if self.stop_event.is_set():
-                        log.debug(
-                            "Stop event detected while waiting on exception, terminating thread"
-                        )
-                        # Pop from stack before terminating
-                        self._execution_stack.pop()
-                        raise SystemExit("Thread termination requested")
-                    self.resume_event.wait(timeout=0.1)
-            end = timeit.default_timer()
-            log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
-            self._on_new_call(k, v)
-            # WARN: The caller object will change as the caller function is recompiled!
-            # Because we look for it in the call stack. This is normal, but we might
-            # want the caller to be the function name instead of the pointer, so we
-            # parameterize the strategy with self._tracking_mode.
-            edge_data = self._call_graph.edges[k, v, params.hash]
-            if "weight" not in edge_data:
-                edge_data["cum_time"] = 0.0
-                edge_data["calls"] = 0
-            edge_data["cum_time"] += end - start
-            edge_data["calls"] += 1
-            edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
-            edge_data["last_timestamp"] = start
-            
-            # Only cache the result if the function executed successfully
-            if not exception_occurred and result is not None:
                 try:
-                    self._cache.set(func_ptr, params, edge_data, result)
+                    result = func_ptr(*args, **kwargs)
                 except Exception as e:
-                    log.error(
-                        f"Error setting cache for {func_ptr} with params {params}: {e}"
-                    )
-            
-            # Pop the callee node from the execution stack before returning
-            self._execution_stack.pop()
-            
-            return result
+                    exception_occurred = True
+                    self._on_exception(e)
+                    # Wait for resume, but check stop_event periodically
+                    while not self.resume_event.is_set():
+                        if self.stop_event.is_set():
+                            log.debug(
+                                "Stop event detected while waiting on exception, terminating thread"
+                            )
+                            raise SystemExit("Thread termination requested")
+                        self.resume_event.wait(timeout=0.1)
+                    # After resuming, return None since the function didn't complete successfully
+                    result = None
+                end = timeit.default_timer()
+                log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
+                self._on_new_call(k, v)
+                # WARN: The caller object will change as the caller function is recompiled!
+                # Because we look for it in the call stack. This is normal, but we might
+                # want the caller to be the function name instead of the pointer, so we
+                # parameterize the strategy with self._tracking_mode.
+                edge_data = self._call_graph.edges[k, v, params.hash]
+                if "weight" not in edge_data:
+                    edge_data["cum_time"] = 0.0
+                    edge_data["calls"] = 0
+                edge_data["cum_time"] += end - start
+                edge_data["calls"] += 1
+                edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
+                edge_data["last_timestamp"] = start
+                
+                # Only cache the result if the function executed successfully
+                if not exception_occurred:
+                    try:
+                        self._cache.set(func_ptr, params, edge_data, result)
+                    except Exception as e:
+                        log.error(
+                            f"Error setting cache for {func_ptr} with params {params}: {e}"
+                        )
+                
+                return result
+            finally:
+                # Always pop the callee node from the execution stack
+                self._execution_stack.pop()
 
         return fever_wrapper
 
