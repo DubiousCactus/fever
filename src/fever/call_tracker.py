@@ -114,6 +114,7 @@ class CallTracker:
         self.resume_event = threading.Event()
         self.stop_event = threading.Event()
         self._propagate_trace_on_cache_hit = propagate_trace_on_cache_hit
+        self._execution_stack: List[TraceNode] = []
 
     def track_calls(
         self,
@@ -191,16 +192,24 @@ class CallTracker:
                 if key == params.hash:
                     params = data["params"]
                     break
-            # INFO: We don't know the caller's parameters, but they are in the graph
-            # somewhere. For now, assuming a single thread, we can connect the caller's
-            # node to the previously registered node for that function. This is britle
-            # though.
-            # FIXME: This will break if we go multithreaded:
-            # FIXME: Include the module too!!
+            # INFO: Use the execution stack to find the correct caller node.
+            # The stack contains the current call chain, so the top of the stack
+            # is the immediate caller.
             caller_params_hash = -1
-            for n in self._call_graph.nodes:
-                if n.func == k:
-                    caller_params_hash = n.params_hash
+            if self._execution_stack:
+                # The top of the stack is the current caller
+                caller_node = self._execution_stack[-1]
+                if caller_node.func == k and caller_node.module == caller_module:
+                    caller_params_hash = caller_node.params_hash
+            
+            # If we couldn't find it in the stack, fall back to searching the graph
+            # (this handles cases where the caller isn't tracked)
+            if caller_params_hash == -1:
+                for n in self._call_graph.nodes:
+                    if n.func == k and n.module == caller_module:
+                        caller_params_hash = n.params_hash
+                        break
+            
             k, v = (
                 TraceNode(caller_module, k, caller_params_hash),
                 TraceNode(module.name, v, params.hash),
@@ -276,10 +285,17 @@ class CallTracker:
                                         )
                                     )
                 return cached_result
+            
+            # Push the current callee node onto the execution stack
+            self._execution_stack.append(v)
+            
             start = timeit.default_timer()
+            result = None
+            exception_occurred = False
             try:
                 result = func_ptr(*args, **kwargs)
             except Exception as e:
+                exception_occurred = True
                 self._on_exception(e)
                 # Wait for resume, but check stop_event periodically
                 while not self.resume_event.is_set():
@@ -287,6 +303,8 @@ class CallTracker:
                         log.debug(
                             "Stop event detected while waiting on exception, terminating thread"
                         )
+                        # Pop from stack before terminating
+                        self._execution_stack.pop()
                         raise SystemExit("Thread termination requested")
                     self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
@@ -304,12 +322,19 @@ class CallTracker:
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
-            try:
-                self._cache.set(func_ptr, params, edge_data, result)
-            except Exception as e:
-                log.error(
-                    f"Error setting cache for {func_ptr} with params {params}: {e}"
-                )
+            
+            # Only cache the result if the function executed successfully
+            if not exception_occurred and result is not None:
+                try:
+                    self._cache.set(func_ptr, params, edge_data, result)
+                except Exception as e:
+                    log.error(
+                        f"Error setting cache for {func_ptr} with params {params}: {e}"
+                    )
+            
+            # Pop the callee node from the execution stack before returning
+            self._execution_stack.pop()
+            
             return result
 
         return fever_wrapper
