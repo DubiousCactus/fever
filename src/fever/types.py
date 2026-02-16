@@ -118,17 +118,18 @@ class FeverParameters:
 
         def hash_or_hash(x: Any) -> int:
             h = -1
+            is_builtin_instance = is_builtin_class_instance(x)
             if (
-                is_builtin_class_instance(x)
-                and isinstance(x, Iterable)
+                isinstance(x, Iterable)
                 and not isinstance(x, str)
+                and is_builtin_instance
             ):
+                hashes = []
                 for y in x:
-                    res = hash_or_hash(y)
-                    h += res
-                return h
+                    hashes.append(hash_or_hash(y))
+                return hash(tuple(hashes))
             try:
-                h = hash(x)
+                h = hash(x) if is_builtin_instance else id(x)
             except Exception:
                 h = hash(make_immutable(x))
             return h

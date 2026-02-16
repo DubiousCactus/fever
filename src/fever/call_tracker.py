@@ -206,13 +206,14 @@ class CallTracker:
                 TraceNode(module.name, v, params.hash),
             )
             self._call_graph.add_nodes_from([k, v])
-            self._call_graph.add_edge(
-                k,
-                v,
-                key=params.hash,
-                params=params,
-                callee_class_name=class_.name if class_ else None,
-            )
+            if not self._call_graph.has_edge(k, v, key=params.hash):
+                self._call_graph.add_edge(
+                    k,
+                    v,
+                    key=params.hash,
+                    params=params,
+                    callee_class_name=class_.name if class_ else None,
+                )
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
                 if class_
