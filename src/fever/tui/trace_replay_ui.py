@@ -47,8 +47,8 @@ def _catch_exceptions_in_thread(
     return None, result
 
 
-class TraceDebugger(App):
-    TITLE = "Fever Trace Debugger"
+class TraceReplayUI(App):
+    TITLE = "Fever Trace Replayer"
     CSS_PATH = "styles/ui.css"
 
     BINDINGS = [
@@ -114,7 +114,7 @@ class TraceDebugger(App):
                 self._has_run = True
                 graph = self._engine._call_tracker.single_edge_call_graph
                 self.query_one(TraceNodesPanel).set_call_graph(graph)
-                await self.query_one(CallGraph).set_call_graph(graph)
+                # await self.query_one(CallGraph).set_call_graph(graph)
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
@@ -305,9 +305,10 @@ class TraceDebugger(App):
 
                 # Call the async set_locals method from the worker thread.
                 # We use call_from_thread to ensure it runs on the main event loop.
-                self.call_from_thread(
-                    self.set_locals, frame.f_locals, frame.f_code.co_name
-                )
+                # FIXME: breaks when it's a FeverRegistryException (why?)
+                # self.call_from_thread(
+                #     self.set_locals, frame.f_locals, frame.f_code.co_name
+                # )
             self.log_tracer(
                 Text(
                     "".join(format_exception_only(exception)).strip()
