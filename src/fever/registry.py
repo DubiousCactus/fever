@@ -9,6 +9,7 @@
 import logging
 import sys
 from collections import defaultdict
+from copy import deepcopy
 from typing import Any, Dict, Optional
 
 from fever.ast_analysis import (
@@ -169,6 +170,12 @@ class Registry:
                 raise FeverRegistryError(
                     f"Function '{func_name}' not found in module '{module_name}'"
                 )
-            return getattr(sys.modules[module_name], func_name)(
-                *params.args, **params.kwargs
-            )
+            try:
+                args = deepcopy(params.args)
+                kwargs = deepcopy(params.kwargs)
+            except Exception:
+                raise FeverRegistryError(
+                    f"Error deep copying parameters for function '{func_name}' in module '{module_name}'."
+                    + "\nSome parameters are not serializable; this function cannnot be replayed."
+                )
+            return getattr(sys.modules[module_name], func_name)(*args, **kwargs)
