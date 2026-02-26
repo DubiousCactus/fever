@@ -189,6 +189,7 @@ class CallTracker:
             params = FeverParameters(args, kwargs)
             for _, _, key, data in self._call_graph.edges(data=True, keys=True):
                 if key == params.hash:
+                    del params
                     params = data["params"]
                     break
             # INFO: We don't know the caller's parameters, but they are in the graph

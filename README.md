@@ -1,4 +1,4 @@
-# Proactive hot code reloading engine
+# Hot reloaded code replay engine
 
 [My previous attempt](https://github.com/DubiousCactus/matchbox?tab=readme-ov-file#3-an-interactive-coding-experience-for-fast-iteration-work-in-progress) was reactive: detect which callable threw an exception, reload that
 callable. We had to detect whether it was a class __init__, a class method, a
@@ -94,7 +94,10 @@ You can now run it as `uv run fever <command>`.
 - [x] v0.0.4: Implement a reliable and unit-tested hot reloading mechanism
 - [x] v0.0.5: Add interface to file watcher to trigger reload events
 - [x] v0.0.6: Implement a reliable (and unit-tested) smart caching mechanism
-- [ ] v0.0.7: Add a tool executable to wrap a script and launch the TUI
+- [ ] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
-- [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.)
+- [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
 - [ ] v0.1.0: Live trace graph update for the TUI
+- [ ] v0.2.0: Rewrite the architecture into a "process isolation" replay engine with
+    IPC: "A process-isolated execution engine that boots into a pre-patched runtime and then
+    accepts replay commands over IPC."

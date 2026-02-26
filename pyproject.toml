@@ -17,6 +17,7 @@ dependencies = [
     "typer",
     "textual>=6.6.0",
     "netext>=0.3.1",
+    "duper>=0.0.6",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

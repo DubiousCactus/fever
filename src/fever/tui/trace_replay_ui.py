@@ -114,7 +114,7 @@ class TraceReplayUI(App):
                 self._has_run = True
                 graph = self._engine._call_tracker.single_edge_call_graph
                 self.query_one(TraceNodesPanel).set_call_graph(graph)
-                # await self.query_one(CallGraph).set_call_graph(graph)
+                await self.query_one(CallGraph).set_call_graph(graph)
         else:
             # NOTE: The cache should be filled up to end node, we can just call start node
             # with cached parameters, and it will run through to end node.
