@@ -1,15 +1,15 @@
 {
   "configurations": [
     {
-      "name": "Debug",
-      "type": "python",
-      "request": "launch",
-      "python": "/Users/cactus/miniforge3/envs/matchbox/bin/python",
-      "autoReload": { "enable": true },
-      "program": "${workspaceFolder}/main.py",
-      "args": [],
-      "env": {"DEBUG": "1"}
+        "name": "Attach to Textual",
+        "type": "python",
+        "request": "attach",
+        "connect": {
+            "host": "127.0.0.1",
+            "port": 5679
+        },
+        "justMyCode": false,
+        "env": {"TEXTUAL_DEBUG": "1"}
     }
-    
   ]
 }
