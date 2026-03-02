@@ -1,4 +1,4 @@
-# Hot reloaded code replay engine
+# 🥵 Hot reloaded code replay engine 🥵
 
 Do you like the prototyping pace of Jupyter notebooks? Do you wish you could have the
 same experience in your full code base, not just for a notebook? Are you infuriated by
