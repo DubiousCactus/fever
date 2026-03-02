@@ -5,7 +5,7 @@ def function_e():
 
 def function_foreign_imports() -> np.ndarray:
     x = np.array([1, 2, 3])
-    return x * 2
+    return x * 3
 
 
 def nested_functions() -> int:
@@ -13,7 +13,7 @@ def nested_functions() -> int:
         def nested_b() -> int:
             return 123
 
-        return f"nested_a calls nested_b: {nested_b()}"
+        return f"nested_a calls modified nested_b: {nested_b()}"
 
     return len(nested_a())
 

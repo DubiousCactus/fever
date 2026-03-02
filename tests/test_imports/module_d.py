@@ -3,7 +3,7 @@ from typing import List
 
 def function_d(name: str) -> int:
     print(f"Nothing to show here, {name}")
-    return 123
+    return 456
 
 
 def other_function_d(name: str) -> int:
@@ -28,7 +28,7 @@ class TestClass:
         print(f"hello {a(name)}")
 
     def return_string(self) -> str:
-        return "just a string"
+        return "not just a string"
 
     class NestedTestClass:
         def __init__(self, owner):
@@ -41,13 +41,13 @@ class TestClass:
 
 class MiniTestClass:
     def __init__(self, name: str):
-        self._name = name
+        self._name = 'testy girl'
 
     def __call__(self) -> str:
-        return self._name
+        return 'oh la la!'
 
     def __len__(self) -> int:
-        return 10
+        return 20
 
     def __str__(self) -> str:
         return f"My name is {self._name}"

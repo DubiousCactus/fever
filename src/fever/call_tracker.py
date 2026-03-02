@@ -114,6 +114,7 @@ class CallTracker:
         self.resume_event = threading.Event()
         self.stop_event = threading.Event()
         self._propagate_trace_on_cache_hit = propagate_trace_on_cache_hit
+        self._execution_stack: List[TraceNode] = []
 
     def track_calls(
         self,
@@ -192,16 +193,24 @@ class CallTracker:
                     del params
                     params = data["params"]
                     break
-            # INFO: We don't know the caller's parameters, but they are in the graph
-            # somewhere. For now, assuming a single thread, we can connect the caller's
-            # node to the previously registered node for that function. This is britle
-            # though.
-            # FIXME: This will break if we go multithreaded:
-            # FIXME: Include the module too!!
+            # INFO: Use the execution stack to find the correct caller node.
+            # The stack contains the current call chain, so the top of the stack
+            # is the immediate caller.
             caller_params_hash = -1
-            for n in self._call_graph.nodes:
-                if n.func == k:
-                    caller_params_hash = n.params_hash
+            if self._execution_stack:
+                # The top of the stack is the current caller
+                caller_node = self._execution_stack[-1]
+                if caller_node.func == k and caller_node.module == caller_module:
+                    caller_params_hash = caller_node.params_hash
+            
+            # If we couldn't find it in the stack, fall back to searching the graph
+            # (this handles cases where the caller isn't tracked)
+            if caller_params_hash == -1:
+                for n in self._call_graph.nodes:
+                    if n.func == k and n.module == caller_module:
+                        caller_params_hash = n.params_hash
+                        break
+            
             k, v = (
                 TraceNode(caller_module, k, caller_params_hash),
                 TraceNode(module.name, v, params.hash),
@@ -277,41 +286,57 @@ class CallTracker:
                                         )
                                     )
                 return cached_result
+            
+            # Push the current callee node onto the execution stack
+            self._execution_stack.append(v)
+            
             start = timeit.default_timer()
+            exception_occurred = False
             try:
-                result = func_ptr(*args, **kwargs)
-            except Exception as e:
-                self._on_exception(e)
-                # Wait for resume, but check stop_event periodically
-                while not self.resume_event.is_set():
-                    if self.stop_event.is_set():
-                        log.debug(
-                            "Stop event detected while waiting on exception, terminating thread"
+                try:
+                    result = func_ptr(*args, **kwargs)
+                except Exception as e:
+                    exception_occurred = True
+                    self._on_exception(e)
+                    # Wait for resume, but check stop_event periodically
+                    while not self.resume_event.is_set():
+                        if self.stop_event.is_set():
+                            log.debug(
+                                "Stop event detected while waiting on exception, terminating thread"
+                            )
+                            raise SystemExit("Thread termination requested")
+                        self.resume_event.wait(timeout=0.1)
+                    # After resuming, return None since the function didn't complete successfully
+                    result = None
+                end = timeit.default_timer()
+                log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
+                self._on_new_call(k, v)
+                # WARN: The caller object will change as the caller function is recompiled!
+                # Because we look for it in the call stack. This is normal, but we might
+                # want the caller to be the function name instead of the pointer, so we
+                # parameterize the strategy with self._tracking_mode.
+                edge_data = self._call_graph.edges[k, v, params.hash]
+                if "weight" not in edge_data:
+                    edge_data["cum_time"] = 0.0
+                    edge_data["calls"] = 0
+                edge_data["cum_time"] += end - start
+                edge_data["calls"] += 1
+                edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
+                edge_data["last_timestamp"] = start
+                
+                # Only cache the result if the function executed successfully
+                if not exception_occurred:
+                    try:
+                        self._cache.set(func_ptr, params, edge_data, result)
+                    except Exception as e:
+                        log.error(
+                            f"Error setting cache for {func_ptr} with params {params}: {e}"
                         )
-                        raise SystemExit("Thread termination requested")
-                    self.resume_event.wait(timeout=0.1)
-            end = timeit.default_timer()
-            log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
-            self._on_new_call(k, v)
-            # WARN: The caller object will change as the caller function is recompiled!
-            # Because we look for it in the call stack. This is normal, but we might
-            # want the caller to be the function name instead of the pointer, so we
-            # parameterize the strategy with self._tracking_mode.
-            edge_data = self._call_graph.edges[k, v, params.hash]
-            if "weight" not in edge_data:
-                edge_data["cum_time"] = 0.0
-                edge_data["calls"] = 0
-            edge_data["cum_time"] += end - start
-            edge_data["calls"] += 1
-            edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
-            edge_data["last_timestamp"] = start
-            try:
-                self._cache.set(func_ptr, params, edge_data, result)
-            except Exception as e:
-                log.error(
-                    f"Error setting cache for {func_ptr} with params {params}: {e}"
-                )
-            return result
+                
+                return result
+            finally:
+                # Always pop the callee node from the execution stack
+                self._execution_stack.pop()
 
         return fever_wrapper
 
