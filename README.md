@@ -26,7 +26,7 @@ thrown, letting you investigate bugs and fix them by reviving your program insta
 
 ### Feeling feverish? Give it a try!
 
-`uv pip install fever`
+`uv pip install --index-url https://test.pypi.org/simple/ fever`
 
 - Hot reload when a file changes on disk: `uv run fever watch <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
 - Interactive code replay TUI: `uv run fever replay <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
