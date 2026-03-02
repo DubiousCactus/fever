@@ -16,13 +16,20 @@ lets you:
 - Drop in a debugger automatically when your code trace finishes, or on exceptions
 thrown, letting you investigate bugs and fix them by reviving your program instantly.
 
+![fever](https://github.com/user-attachments/assets/d181ae46-82eb-4581-b01d-0decea58a9b7)
 
-Feeling feverish? Give it a try!
+
+<div align="center">
+<a href="https://asciinema.org/a/806651"  target="_blank" style="display: inline-block;"><i>Link to the asciinema</i></a>
+</div>
+<br>
+
+### Feeling feverish? Give it a try!
 
 `uv pip install fever`
 
-- *Hot reload when a file changes on disk:* `uv run fever watch <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
-- *Interactive code replay TUI:* `uv run fever replay <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
+- Hot reload when a file changes on disk: `uv run fever watch <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
+- Interactive code replay TUI: `uv run fever replay <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
 
 
 **Fever is currently under heavy development and is still at the prototyping stage. We
