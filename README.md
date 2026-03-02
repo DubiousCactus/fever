@@ -55,12 +55,12 @@ Once we found all the callables in a module, we can wrap them in a proxy upon im
 before returning the code to the user. With this mechanism in place, we are able to
 track which callable was changed on disk -- ie hash all callables in the dependency
 graph of the module and detect hash changes. Up to this point, everything that happened
-is fully transparent to the user.
-
+is fully invisible to the user.
 
 ### 3. Hot code reloading
 
-Whenever the user calls for a reload, each changed callable is reloaded, and only that,
+Whenever the user calls for a reload (or when the file watcher does), 
+each changed callable is reloaded, and only that,
 and re-executed in the registry's isolated namespace. Thanks to the proxy wrapper, every
 place where a function was previously imported and called will automatically call the
 new code. Pretty sweet, right?
