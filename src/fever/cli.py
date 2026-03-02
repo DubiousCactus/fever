@@ -84,8 +84,8 @@ def watch(
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def debug(
-    script: Annotated[str, typer.Argument(..., help="The script to run and watch.")],
+def replay(
+    script: Annotated[str, typer.Argument(..., help="The script to replay.")],
     extra_args: List[str] = typer.Argument(None),
 ):
     """

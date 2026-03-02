@@ -1,14 +1,39 @@
 # Hot reloaded code replay engine
 
-[My previous attempt](https://github.com/DubiousCactus/matchbox?tab=readme-ov-file#3-an-interactive-coding-experience-for-fast-iteration-work-in-progress) was reactive: detect which callable threw an exception, reload that
-callable. We had to detect whether it was a class __init__, a class method, a
-module-level function or a lambda. This wouldn't scale, and I had many holes to patch.
+Do you like the prototyping pace of Jupyter notebooks? Do you wish you could have the
+same experience in your full code base, not just for a notebook? Are you infuriated by
+having to re-run your boot-up heavy program with slow data loading just so you can hit a
+breakpoint and debug?
 
-The new approach is proactive and requires analyzing and monkey-patching the user's code
-before the user even gets a hold of it.
+Fever is here for you! Without changing a single line of code in your code base, fever
+lets you:
+
+- Interactively re-run code traces from one arbitrary function to another, while keeping
+  the state of your program warm in memory.
+- Hot reload code changes anywhere in your code base, so you can iterate aggressively on
+  the *hot parts of your code* and see the output instantly, without going through the
+    *slow, cold parts of your code*.
+- Drop in a debugger automatically when your code trace finishes, or on exceptions
+thrown, letting you investigate bugs and fix them by reviving your program instantly.
 
 
-## How?
+Feeling feverish? Give it a try!
+
+`uv pip install fever`
+
+- *Hot reload when a file changes on disk:* `uv run fever watch <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
+- *Interactive code replay TUI:* `uv run fever replay <my_python_code.py> <my_arg1> <--my-arg-2=val> <...>`
+
+
+**Fever is currently under heavy development and is still at the prototyping stage. We
+are working hard on bringing the robustness to the best standards.**
+
+
+# How does it work?
+
+Fever is at its core a hot code reloading engine, but on steroids. Hot reloading is
+proactive: fever analyzes your modules upon import and wraps functions to re-route
+calls to the latest compiled version. Here's the gist:
 
 ### 1. Import hooks and AST analysis
 
@@ -17,7 +42,7 @@ so that we can record module imports (and optionally a dependency graph). Then w
 an AST of the code so that we can analyze all callables and keep track of: module-level
 functions, class methods, lambdas (well that's probably not gonna happen), etc.
 
-### 2. Monkey-patching and proxy callables
+### 2. Wrapping callables
 
 Once we found all the callables in a module, we can wrap them in a proxy upon import,
 before returning the code to the user. With this mechanism in place, we are able to
@@ -34,7 +59,7 @@ place where a function was previously imported and called will automatically cal
 new code. Pretty sweet, right?
 
 
-## How does it differ from Jurigged, Lemonade, reloadium and others?
+# How does it differ from Jurigged, Lemonade, reloadium and others?
 
 1. More advanced hot reloading mechanism:
     a. Instead of compiling the entire module to replace just one function in the
@@ -46,46 +71,19 @@ new code. Pretty sweet, right?
     a. Only reload the code that was changed on disk.
     b. Only re-execute the code that was reloaded (reuse from cache for other
     functions).
-    c. Handle loops in a smart way! Aggregate results when possible, save to disk, or
-    opt in for a given strategy?
-    d. Smart allocation of a memory budget for the cache: if the user allows a 10GB
-    cache, the Fever must allocate the cache memory to the most costly functions.
-    Function calls must be linearized and aggregated such that intermediate calls aren't
-    cached.
-3. (TODO) Handle multiprocessing for PyTorch dataloaders.
-4. Have a more flexible API that lets us do more things:
-    a. Define the scope of hot reloading for a given "root callable".
-    b. Allow to hang on exception.
-    c. Allow saving a whole execution graph on disk, letting us replay for debugging
-    step by step and rewinding, and letting us hot-reload on a "playthrough" file.
-5. (TODO) Handling GPU computation???? (no idea what/how/why yet).
-6. Keep a history of changes so that we can revert code changes (e.g. in case the new
+    c. (TODO) Handle loops in a smart way! Aggregate results when possible.
+3. Live code replay à la Jupyter:
+    a. Record program trace and allow selecting start and end nodes for replay.
+    b. Allow to hang on exception or at the end of the trace subgraph.
+    c. (TODO) Process-independent function execution for deterministic and mutation-free
+    trace replay.
+4. (TODO) Handle multiprocessing for PyTorch dataloaders.
+5. (TODO) Handling GPU computation? (no idea what/how/why yet).
+6. (TODO) Keep a history of changes so that we can revert code changes (e.g. in case the new
     code causes a crash).
 
 
-## Usage
-
-My previous attempt used a chain of modules that had to be manually defined. Each module
-was a callable that could be ran and reloaded in the order of the chain. Modules in the
-chain could be frozen, effectively skipping recomputation by caching the result.
-
-Now, I want this to be much much simpler. In the first iteration, I want to replace the
-chain by simple decorators around callables, such that there is no need to modify a
-codebase or add a new entry point to launch the chain. The program should run normally,
-but when a wrapped callable is called, we should take the hand and:
-1. catch all exceptions, allowing to drop in a debugger and inspect the frame.
-2. reload all code and verify whether the user modified code outside the trace of the
-   currently active callable.
-3. hang after execution of the callable.
-
-### Dev setup
-
-To use in dev mode, you can install the plugin in dev mode within your environment, e.g.
-with uv: `uv pip install -e /path/to/fever/`.
-
-You can now run it as `uv run fever <command>`.
-
-## Roadmap
+# Roadmap
 
 - [x] v0.0.1: Basic proof of concept for hot code reloading only callables that changed
   on disk
@@ -94,10 +92,10 @@ You can now run it as `uv run fever <command>`.
 - [x] v0.0.4: Implement a reliable and unit-tested hot reloading mechanism
 - [x] v0.0.5: Add interface to file watcher to trigger reload events
 - [x] v0.0.6: Implement a reliable (and unit-tested) smart caching mechanism
-- [ ] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
+- [x] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
-- [ ] v0.0.9: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
-- [ ] v0.1.0: Live trace graph update for the TUI
-- [ ] v0.2.0: Rewrite the architecture into a "process isolation" replay engine with
+- [ ] v0.0.9: Live trace graph update for the TUI
+- [ ] v0.1.0: Rewrite the architecture into a "process isolation" replay engine with
     IPC: "A process-isolated execution engine that boots into a pre-patched runtime and then
     accepts replay commands over IPC."
+- [ ] v0.1.1: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
