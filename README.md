@@ -75,18 +75,17 @@ new code. Pretty sweet, right?
     b. Handles new function, class, method definitions (even without recompiling the entire
     module).
 2. Smart caching of function calls for instant hot reloading:
-    a. Only reload the code that was changed on disk.
-    b. Only re-execute the code that was reloaded (reuse from cache for other
+    - Only reload the code that was changed on disk.
+    -  Only re-execute the code that was reloaded (reuse from cache for other
     functions).
-    c. (TODO) Handle loops in a smart way! Aggregate results when possible.
-3. Live code replay à la Jupyter:
-    a. Record program trace and allow selecting start and end nodes for replay.
-    b. Allow to hang on exception or at the end of the trace subgraph.
-    c. (TODO) Process-independent function execution for deterministic and mutation-free
-    trace replay.
-4. (TODO) Handle multiprocessing for PyTorch dataloaders.
-5. (TODO) Handling GPU computation? (no idea what/how/why yet).
-6. (TODO) Keep a history of changes so that we can revert code changes (e.g. in case the new
+    - (TODO) Handle loops in a smart way! Aggregate results when possible.
+4. Live code replay à la Jupyter:
+    - Record program trace and allow selecting start and end nodes for replay.
+    - Allow to hang on exception or at the end of the trace subgraph.
+     - (TODO) Process-independent function execution for deterministic and mutation-free trace replay.
+5. (TODO) Handle multiprocessing for PyTorch dataloaders.
+6. (TODO) Handling GPU computation? (no idea what/how/why yet).
+7. (TODO) Keep a history of changes so that we can revert code changes (e.g. in case the new
     code causes a crash).
 
 
@@ -102,7 +101,5 @@ new code. Pretty sweet, right?
 - [x] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
 - [ ] v0.0.8: PDB++ TUI integration + flexible API
 - [ ] v0.0.9: Live trace graph update for the TUI
-- [ ] v0.1.0: Rewrite the architecture into a "process isolation" replay engine with
-    IPC: "A process-isolated execution engine that boots into a pre-patched runtime and then
-    accepts replay commands over IPC."
+- [ ] v0.1.0: Rewrite the architecture into a "process isolation" replay engine with IPC.
 - [ ] v0.1.1: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
