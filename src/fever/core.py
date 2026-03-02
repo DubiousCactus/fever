@@ -1,7 +1,8 @@
+import logging
 import sys
 import warnings
 from types import FrameType, ModuleType
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from rich.console import Console
@@ -10,12 +11,22 @@ from fever.ast_analysis import (
     ASTAnalyzer,
     generic_function,
 )
+from fever.cache import Cache
 from fever.registry import Registry
 
 from .call_tracker import CallTracker, TrackingMode
 from .dependency_tracker import DependencyTracker
-from .types import FeverClass, FeverFunction, FeverModule, FeverWarning
+from .types import (
+    FeverClass,
+    FeverFunction,
+    FeverModule,
+    FeverParameters,
+    FeverWarning,
+    TraceNode,
+)
 from .utils import ConsoleInterface, parse_verbosity
+
+log = logging.getLogger("fever-core")
 
 
 def compile_code_in_namespace(
@@ -48,7 +59,12 @@ def compile_code_in_namespace(
 
 
 class FeverCore:
-    def __init__(self, rich_console: Optional[Console] = None, with_cache: Optional[bool] = True):
+    def __init__(
+        self,
+        rich_console: Optional[Console] = None,
+        cache: Optional[Cache] = None,
+        propagate_trace_on_cache_hit: bool = False,
+    ):
         self._verbosity = parse_verbosity()
         console = None if self._verbosity == 0 else (rich_console or Console())
         self._console_if: ConsoleInterface = ConsoleInterface(console)
@@ -60,12 +76,21 @@ class FeverCore:
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
             self.on_module_load,
         )
+        self._cache = cache
         self._call_tracker: CallTracker = CallTracker(
             self.registry,
             TrackingMode.KV_NAMES,
             self._console_if if self._verbosity >= 2 else ConsoleInterface(None),
-            with_cache=with_cache,
+            cache=cache,
+            propagate_trace_on_cache_hit=propagate_trace_on_cache_hit,
         )
+
+    def set_console_interface(
+        self, console_if: ConsoleInterface, verbosity: Optional[int] = None
+    ):
+        self._console_if = console_if
+        if verbosity is not None:
+            self._verbosity = verbosity
 
     def setup(self, caller_frame: Optional[FrameType] = None):
         """
@@ -402,3 +427,19 @@ class FeverCore:
         """
         _ = entry_point
         raise NotImplementedError
+
+    def set_on_new_call_callback(
+        self, callback: Callable[[TraceNode, TraceNode], None]
+    ) -> None:
+        self._call_tracker._on_new_call = callback
+
+    def set_on_exception_callback(
+        self,
+        callback: Callable,
+    ) -> None:
+        self._call_tracker._on_exception = callback
+
+    def get_cached_params(
+        self, module_name: str, func_name: str
+    ) -> List[Tuple[TraceNode, FeverParameters]]:
+        return self._call_tracker.get_function_calls(module_name, func_name)

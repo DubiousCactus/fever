@@ -475,3 +475,31 @@ class TestHotReloading(unittest.TestCase):
         self.fever.reload()
         res = module_a.function_with_globals()
         self.assertEqual(res, 300)
+
+    def test_dont_detect_existing_globals(self):
+        raise NotImplementedError
+        import module_a  # noqa: F401
+
+        self.assertFalse(hasattr(module_a, "function_with_globals"))
+        self.assertFalse(hasattr(module_a, "global_var_a"))
+        self.assertFalse(hasattr(module_a, "global_var_b"))
+        fpath = "tests/test_imports/module_a.py"
+        with open(fpath, "a") as f:
+            f.write(
+                """\n\nglobal_var_a = 10\nglobal_var_b = 20\n\ndef function_with_globals() -> int:\n    return global_var_a + global_var_b\n"""
+            )
+            f.flush()
+        self.fever.reload()
+        self.assertTrue(hasattr(module_a, "function_with_globals"))
+        self.assertTrue(hasattr(module_a, "global_var_a"))
+        self.assertTrue(hasattr(module_a, "global_var_b"))
+        res = module_a.function_with_globals()
+        self.assertEqual(res, 30)
+        replace_on_disk(
+            fpath,
+            """global_var_a = 10\nglobal_var_b = 20""",
+            """global_var_a = 100\nglobal_var_b = 200""",
+        )
+        self.fever.reload()
+        res = module_a.function_with_globals()
+        self.assertEqual(res, 300)

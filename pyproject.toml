@@ -1,6 +1,6 @@
 [project]
 name = "fever"
-version = "0.0.6"
+version = "0.0.7"
 description = "The pace of Jupyter Notebooks in your existing code base. The power of pdb++ in a visual interface. Python hot code reloading on steroids."
 readme = "README.md"
 authors = [
@@ -16,6 +16,8 @@ dependencies = [
     "pympler>=1.1",
     "typer",
     "textual>=6.6.0",
+    "netext>=0.3.1",
+    "duper>=0.0.6",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -32,6 +34,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "debugpy>=1.8.20",
     "requests>=2.32.5",
 ]
 

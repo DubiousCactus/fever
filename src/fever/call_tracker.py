@@ -4,19 +4,28 @@
 # Distributed under terms of the MIT license.
 
 import enum
+import inspect
+import logging
 import sys
+import threading
 import timeit
 import warnings
 from functools import wraps
 from types import FrameType
-from typing import Callable, Optional
+from typing import Callable, List, Optional, Tuple
 
 import networkx as nx
 
 from fever.ast_analysis import FeverClass, FeverFunction, FeverModule, generic_function
-from fever.cache import Cache, ParamWiseLRUEvictionPolicy
+from fever.cache import Cache
 from fever.registry import Registry
-from fever.types import FeverParameters, FeverWarning
+from fever.types import (
+    FeverParameters,
+    FeverRegistryError,
+    FeverTrackerError,
+    FeverWarning,
+    TraceNode,
+)
 from fever.utils import ConsoleInterface
 
 
@@ -33,6 +42,10 @@ class TrackingMode(enum.Enum):
 
     KV_POINTERS = enum.auto()
     KV_NAMES = enum.auto()
+
+
+log = logging.getLogger("fever-tracer")
+log.debug("Engine initialized")
 
 
 def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
@@ -72,19 +85,35 @@ def get_caller_obj(caller_frame: FrameType, caller_name: str) -> object | None:
     return caller_obj
 
 
+def get_caller_frame(frame: FrameType) -> FrameType:
+    while frame:
+        if frame.f_code.co_name != "fever_wrapper":
+            break
+        frame = frame.f_back
+    return frame
+
+
 class CallTracker:
     def __init__(
         self,
         registry: Registry,
         tracking_mode: TrackingMode,
         console: ConsoleInterface,
-        with_cache: bool,
+        cache: Optional[Cache] = None,
+        propagate_trace_on_cache_hit: bool = False,
+        on_new_call: Callable[[object, object], None] = (lambda k, v: None),
+        on_exception: Callable = lambda: None,
     ):
         self._console = console
         self._call_graph = nx.MultiDiGraph()
         self._registry = registry
         self._tracking_mode = tracking_mode
-        self._cache = Cache(console, "50KB", ParamWiseLRUEvictionPolicy(), enabled=with_cache)
+        self._cache = cache or Cache(console, enabled=False)
+        self._on_new_call: Callable[[TraceNode, TraceNode], None] = on_new_call
+        self._on_exception: Callable = on_exception
+        self.resume_event = threading.Event()
+        self.stop_event = threading.Event()
+        self._propagate_trace_on_cache_hit = propagate_trace_on_cache_hit
 
     def track_calls(
         self,
@@ -108,9 +137,36 @@ class CallTracker:
             # as my caller/callee objects. Function addresses? Class instances? Bounded
             # methods? I'll know more as I implement the rest, and I'll revisit this
             # part.
-            caller_frame = sys._getframe(1)
-            caller_name = getattr(caller_frame.f_code, "co_qualname", "CALLER_UNKNOWN")
+            log.debug(
+                f"Tracking call to '{func.name}' defined in '{module.name}' with {len(args)} args and {len(kwargs)} kwargs"
+            )
+            self.resume_event.clear()
+            # Check if we should stop execution (e.g., on app exit or reload)
+            if self.stop_event.is_set():
+                log.debug("Stop event is set, raising SystemExit to terminate thread")
+                raise SystemExit("Thread termination requested")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
+            caller_frame = get_caller_frame(sys._getframe())
+            if caller_frame is None:
+                raise FeverTrackerError("Could not determine caller frame")
+            caller_name = getattr(caller_frame.f_code, "co_qualname")
+            if caller_name is None:
+                raise FeverTrackerError("Could not determine caller name from frame")
+            caller_module = inspect.getmodulename(caller_frame.f_code.co_filename)
+            if caller_module is None:
+                # NOTE: This happens when we hot compiled code! One way to find the caller
+                # module is to go one more frame up, which should be this wrapper. In
+                # its locals we should find the module.
+                try:
+                    wrapper_frame = caller_frame.f_back
+                    caller_fever_module: Optional[FeverModule] = (
+                        wrapper_frame.f_locals.get("module", None)
+                    )
+                    caller_module = caller_fever_module.name
+                except Exception:
+                    raise FeverTrackerError(
+                        f"Could not determine caller module for {caller_name} from frame"
+                    )
             self._console.print(
                 f"Callable '{callable_full_name}' defined in '{module.name}' "
                 + f"was called by '{caller_name}' at line {caller_frame.f_lineno}",
@@ -122,14 +178,43 @@ class CallTracker:
                 caller_obj = get_caller_obj(caller_frame, caller_name)
                 if caller_obj is None:
                     warn = f"Could not resolve caller object for caller named '{caller_name}'"
-                    self._console.print(warn, style="red on black")
+                    log.debug(warn)
                     warnings.warn(warn, FeverWarning)
                     caller_obj = module.obj  # Fallback to the module object
                 k, v = caller_obj, func.obj
 
-            self._call_graph.add_nodes_from([k, v])
+            # INFO: if this is a cached call, we should retreive the existing edge and
+            # not  create a new FeverParameters object! It will be an cached call if the
+            # parameters are exactly the same objects.
             params = FeverParameters(args, kwargs)
-            self._call_graph.add_edge(k, v, key=params.hash, params=params)
+            for _, _, key, data in self._call_graph.edges(data=True, keys=True):
+                if key == params.hash:
+                    del params
+                    params = data["params"]
+                    break
+            # INFO: We don't know the caller's parameters, but they are in the graph
+            # somewhere. For now, assuming a single thread, we can connect the caller's
+            # node to the previously registered node for that function. This is britle
+            # though.
+            # FIXME: This will break if we go multithreaded:
+            # FIXME: Include the module too!!
+            caller_params_hash = -1
+            for n in self._call_graph.nodes:
+                if n.func == k:
+                    caller_params_hash = n.params_hash
+            k, v = (
+                TraceNode(caller_module, k, caller_params_hash),
+                TraceNode(module.name, v, params.hash),
+            )
+            self._call_graph.add_nodes_from([k, v])
+            if not self._call_graph.has_edge(k, v, key=params.hash):
+                self._call_graph.add_edge(
+                    k,
+                    v,
+                    key=params.hash,
+                    params=params,
+                    callee_class_name=class_.name if class_ else None,
+                )
             registry = (
                 self._registry._CLASS_METHOD_PTRS[module.name][class_.name]
                 if class_
@@ -141,15 +226,73 @@ class CallTracker:
             assert not hasattr(func_ptr, "__wrapped__"), (
                 "Callable wrapped recursively. This is not good."
             )
-            if cached_result := self._cache.get(func_ptr, params):
+            # WARN: If the function code hash has changed, we should skip the cache! But
+            # if we reload, wouldn't the function pointer change anyway?
+            if (cached_result := self._cache.get(func_ptr, params)) is not None:
                 self._console.print(
                     f"Cache hit for callable '{callable_full_name}' with params: {params}",
                     style="yellow on black",
                 )
+                log.debug(
+                    f"Cache hit for callable '{callable_full_name}' with params: {params}",
+                )
+                if self._propagate_trace_on_cache_hit:
+                    for u_caller, v_callee, data in self._call_graph.edges(data=True):
+                        if u_caller == v:
+                            # NOTE: class_ isn't available when we propagate, because
+                            # calls are being made from the wrapper of a root function.
+                            # Since this is emulation, we need to recover the class of
+                            # that call. To do so, we store it in the graph.
+                            if data["callee_class_name"]:
+                                try:
+                                    _ = self._registry.invoke_wrapped(
+                                        v_callee.module,
+                                        v_callee.func,
+                                        data["params"],
+                                        data["callee_class_name"],
+                                    )
+                                except (KeyError, AttributeError):
+                                    log.debug(
+                                        "Cache hit propagation failed: no registry entry found"
+                                    )
+                                    self._on_exception(
+                                        FeverRegistryError(
+                                            "No registry entry found for cache hit propagation"
+                                        )
+                                    )
+                            else:
+                                try:
+                                    _ = self._registry.invoke_wrapped(
+                                        v_callee.module,
+                                        v_callee.func,
+                                        data["params"],
+                                    )
+                                except (KeyError, AttributeError):
+                                    log.debug(
+                                        "Cache hit propagation failed: no registry entry found"
+                                    )
+                                    self._on_exception(
+                                        FeverRegistryError(
+                                            "No registry entry found for cache hit propagation"
+                                        )
+                                    )
                 return cached_result
             start = timeit.default_timer()
-            result = func_ptr(*args, **kwargs)
+            try:
+                result = func_ptr(*args, **kwargs)
+            except Exception as e:
+                self._on_exception(e)
+                # Wait for resume, but check stop_event periodically
+                while not self.resume_event.is_set():
+                    if self.stop_event.is_set():
+                        log.debug(
+                            "Stop event detected while waiting on exception, terminating thread"
+                        )
+                        raise SystemExit("Thread termination requested")
+                    self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
+            log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
+            self._on_new_call(k, v)
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
             # want the caller to be the function name instead of the pointer, so we
@@ -162,7 +305,12 @@ class CallTracker:
             edge_data["calls"] += 1
             edge_data["weight"] = edge_data["cum_time"] / edge_data["calls"]
             edge_data["last_timestamp"] = start
-            self._cache.set(func_ptr, params, edge_data, result)
+            try:
+                self._cache.set(func_ptr, params, edge_data, result)
+            except Exception as e:
+                log.error(
+                    f"Error setting cache for {func_ptr} with params {params}: {e}"
+                )
             return result
 
         return fever_wrapper
@@ -205,3 +353,55 @@ class CallTracker:
         )
         plt.tight_layout()
         plt.show()
+
+    @property
+    def single_edge_call_graph(self) -> nx.DiGraph:
+        """
+        Return a simplified version of the call graph where multiple edges between
+        the same nodes are merged into a single edge. The edge attributes are aggregated
+        by summing the cumulative time and calls, and averaging the weight.
+        """
+        G = nx.DiGraph()
+        for u, v, data in self._call_graph.edges(data=True):
+            nu, nv = TraceNode.strip_params(u), TraceNode.strip_params(v)
+            if G.has_edge(nu, nv):
+                G[nu][nv]["cum_time"] += data["cum_time"]
+                G[nu][nv]["calls"] += data["calls"]
+                G[nu][nv]["weight"] = G[nu][nv]["cum_time"] / G[nu][nv]["calls"]
+            else:
+                G.add_edge(
+                    nu,
+                    nv,
+                    cum_time=data["cum_time"],
+                    calls=data["calls"],
+                    weight=data["weight"],
+                )
+        return G
+
+    def get_function_calls(
+        self, module_name: str, func_name: str
+    ) -> List[Tuple[TraceNode, FeverParameters]]:
+        """
+        Return the list of calls as a list of tuples (caller, List[FeverParameters]) for given function.
+        """
+        if self._tracking_mode == TrackingMode.KV_POINTERS:
+            if func := self._registry.find_function_by_name(func_name, module_name):
+                log.debug(
+                    f"Found {func_name} in registry for module {module_name}: {func.obj}"
+                )
+            else:
+                raise RuntimeError(
+                    f"Function '{func_name}' not found in registry for module '{module_name}'"
+                )
+            k = func.obj
+        elif self._tracking_mode == TrackingMode.KV_NAMES:
+            k = func_name
+        else:
+            raise NotImplementedError(
+                f"Tracking mode {self._tracking_mode} not implemented."
+            )
+        params = []
+        for u, v, data in self._call_graph.edges(data=True):
+            if v.func == k and v.module == module_name:
+                params.append((u, data["params"]))
+        return params

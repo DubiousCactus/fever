@@ -7,7 +7,7 @@
 
 
 import os
-from typing import Optional
+from typing import Callable, Optional
 
 from rich.console import Console
 
@@ -26,9 +26,19 @@ def parse_verbosity() -> int:
 
 
 class ConsoleInterface:
-    def __init__(self, console: Optional[Console]):
+    def __init__(
+        self,
+        console: Optional[Console] = None,
+        ui_logger: Optional[Callable] = None,
+    ):
         self.console = console
-        self._print = console.print if console else lambda *a, **k: None
+        self.ui_logger = ui_logger
+        if console is not None:
+            self._print = console.print
+        elif ui_logger is not None:
+            self._print = ui_logger
+        else:
+            self._print = lambda *a, **k: None
 
     def print(self, *args, **kwargs):
         self._print(*args, **kwargs)

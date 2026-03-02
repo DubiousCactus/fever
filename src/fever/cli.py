@@ -8,8 +8,10 @@ import typer
 from rich.console import Console
 from typing_extensions import Annotated
 
-from .core import FeverCore
-from .tui.builder_ui import BuilderUI
+from fever.cache import Cache
+from fever.utils import ConsoleInterface
+
+from .tui.trace_replay_ui import TraceReplayUI
 from .watcher import FeverWatcher
 
 app = typer.Typer()
@@ -31,7 +33,17 @@ def watch(
         f"Watching script: {script} " + ("with caching" if not no_cache else ""),
         style="bold green",
     )
-    watcher = FeverWatcher(rich_console=console, with_cache=not no_cache)
+    watcher = FeverWatcher(
+        rich_console=console,
+        cache=None
+        if no_cache
+        else Cache(
+            console=console,
+            mem_limit="100MB",
+            min_calls_threshold=1,
+            min_time_s_threshold=0.1,
+        ),
+    )
     watcher.watch()
     command = [script] + (extra_args or [])
     sys.argv = command
@@ -43,6 +55,10 @@ def watch(
     sys.path.insert(0, script_dir)
     # NOTE: We manually import the script module so that we can track it.
     importlib.import_module(script.split(".py")[0])
+    if os.getenv("FEVER_DEBUG", "0").lower() in ["1", "true"]:
+        import debugpy
+
+        debugpy.listen(("127.0.0.1", 5679))
 
     def cleanup():
         watcher.stop()
@@ -68,17 +84,46 @@ def watch(
 @app.command(
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
-def debug(
-    script: Annotated[str, typer.Argument(..., help="The script to run and watch.")],
+def replay(
+    script: Annotated[str, typer.Argument(..., help="The script to replay.")],
     extra_args: List[str] = typer.Argument(None),
 ):
     """
     Debug a program with the TUI.
     """
-    fever_engine = FeverCore()
-    fever_engine.setup()
-    BuilderUI(fever_engine, []).run()
-    fever_engine.cleanup()
+    watcher = FeverWatcher(
+        cache=Cache(
+            console=console,
+            mem_limit="4GB",
+            min_calls_threshold=0,
+            min_time_s_threshold=0,
+            enabled=False,
+        ),
+    )
+    watcher.watch()
+    command = [script] + (extra_args or [])
+    sys.argv = command
+    script_path = os.path.abspath(script)
+    script_dir = os.path.dirname(script_path)
+    os.chdir(script_dir)
+    # Ensure relative imports (from file import func) work
+    # Python normally inserts '' (the current directory) as position 0
+    sys.path.insert(0, script_dir)
+    # NOTE: We manually import the script module so that we can track it.
+    importlib.import_module(script.split(".py")[0])
+    if os.getenv("FEVER_DEBUG", "0").lower() in ["1", "true"]:
+        import debugpy
+
+        debugpy.listen(("127.0.0.1", 5679))
+
+    ui = TraceReplayUI(watcher.fever, script_path)
+    watcher.set_console_interface(
+        ConsoleInterface(ui_logger=ui.log_fever_event),
+        verbosity=0,
+        core_verbosity=1,
+    )
+    ui.run()
+    watcher.stop()
 
 
 if __name__ == "__main__":

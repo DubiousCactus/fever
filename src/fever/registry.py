@@ -6,8 +6,11 @@
 # Distributed under terms of the MIT license.
 
 
+import logging
+import sys
 from collections import defaultdict
-from typing import Dict, Optional
+from copy import deepcopy
+from typing import Any, Dict, Optional
 
 from fever.ast_analysis import (
     FeverClass,
@@ -17,6 +20,9 @@ from fever.ast_analysis import (
     GenericClass,
     generic_function,
 )
+from fever.types import FeverParameters, FeverRegistryError
+
+log = logging.getLogger("fever-registry")
 
 
 class Registry:
@@ -137,3 +143,39 @@ class Registry:
             self._add_class_code_pointer(module_name, cls_)
             for method in module.methods[cls_]:
                 self._add_method_code_pointer(module_name, cls_, method)
+
+    def invoke_wrapped(
+        self,
+        module_name: str,
+        func_name: str,
+        params: FeverParameters,
+        class_name: Optional[str] = None,
+    ) -> Any:
+        log.debug(f"invoking wrapped {func_name} with {len(params)} args")
+        if module_name not in self._inventory:
+            raise FeverRegistryError(f"Module '{module_name}' not found in registry")
+        if class_name:
+            if not hasattr(sys.modules[module_name], class_name):
+                raise FeverRegistryError(
+                    f"Class '{class_name}' not found in module '{module_name}'"
+                )
+            class_ = getattr(sys.modules[module_name], class_name)
+            if not hasattr(class_, func_name):
+                raise FeverRegistryError(
+                    f"Method '{func_name}' not found in class '{class_name}' of module '{module_name}'"
+                )
+            return getattr(class_, func_name)(*params.args, **params.kwargs)
+        else:
+            if not hasattr(sys.modules[module_name], func_name):
+                raise FeverRegistryError(
+                    f"Function '{func_name}' not found in module '{module_name}'"
+                )
+            try:
+                args = deepcopy(params.args)
+                kwargs = deepcopy(params.kwargs)
+            except Exception:
+                raise FeverRegistryError(
+                    f"Error deep copying parameters for function '{func_name}' in module '{module_name}'."
+                    + "\nSome parameters are not serializable; this function cannnot be replayed."
+                )
+            return getattr(sys.modules[module_name], func_name)(*args, **kwargs)

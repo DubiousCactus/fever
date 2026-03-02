@@ -3,9 +3,11 @@
 #
 # Distributed under terms of the MIT license.
 
+import warnings
+from collections.abc import Iterable
+from copy import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-import warnings
 
 
 class FeverWarning(Warning):
@@ -71,6 +73,14 @@ class FeverParameters:
     __slots__ = "args", "kwargs", "hash"
 
     def __init__(self, args: tuple, kwargs: dict):
+        def is_torch_tensor(x: Any) -> bool:
+            try:
+                import torch
+
+                return isinstance(x, torch.Tensor)
+            except ImportError:
+                return False
+
         def make_immutable(x: Any) -> object:
             if isinstance(x, dict):
                 return frozenset(
@@ -82,20 +92,58 @@ class FeverParameters:
                 return frozenset([make_immutable(a) for a in x])
             elif isinstance(x, tuple):
                 return tuple([make_immutable(a) for a in x])
+            elif hasattr(x, "tobytes"):
+                try:
+                    return x.tobytes()
+                except Exception:
+                    try:
+                        return x.tobytes
+                    except Exception:
+                        return str(x)
+            elif is_torch_tensor(x):
+                import torch
+
+                try:
+                    return torch.hash_tensor(x).item()
+                except Exception:
+                    return tuple([make_immutable(a) for a in x.tolist()])
             else:
                 return x
 
-        self.args = make_immutable(args)
-        self.kwargs = make_immutable(kwargs)
+        # Source - https://stackoverflow.com/a/17795199
+        # Posted by glarrain, modified by community. See post 'Timeline' for change history
+        # Retrieved 2026-02-15, License - CC BY-SA 4.0
+        def is_builtin_class_instance(obj):
+            return obj.__class__.__module__ == "builtins"
+
+        def hash_or_hash(x: Any) -> int:
+            h = -1
+            is_builtin_instance = is_builtin_class_instance(x)
+            if (
+                isinstance(x, Iterable)
+                and not isinstance(x, str)
+                and is_builtin_instance
+            ):
+                hashes = []
+                for y in x:
+                    hashes.append(hash_or_hash(y))
+                return hash(tuple(hashes))
+            try:
+                h = hash(x) if is_builtin_instance else id(x)
+            except Exception:
+                h = hash(make_immutable(x))
+            return h
+
+        self.args = copy(args)
+        self.kwargs = copy(kwargs)
         try:
-            self.hash = hash((self.args, self.kwargs))
+            self.hash = hash((hash_or_hash(args), hash_or_hash(kwargs)))
         except TypeError:
             warnings.warn(
                 f"Could not hash parameters: args={self.args}, kwargs={self.kwargs}",
                 FeverWarning,
             )
             self.hash = -1
-
 
     def __hash__(self) -> int:
         return self.hash
@@ -106,6 +154,59 @@ class FeverParameters:
             full_str = full_str[:27] + "..."
         return full_str
 
+    def __len__(self) -> int:
+        args_len = 1
+        if isinstance(self.args, Iterable):
+            args_len = len(self.args)
+        kwargs_len = len(self.kwargs)
+        return args_len + kwargs_len
+
 
 class FeverEntryPoint:
     pass
+
+
+class TraceNode:
+    __slots__ = "module", "func", "params_hash"
+
+    def __init__(
+        self, module: str, func: str | object, params_hash: Optional[int] = None
+    ):
+        self.module = module
+        self.func = func
+        self.params_hash = params_hash
+
+    @staticmethod
+    def strip_params(node: "TraceNode") -> "TraceNode":
+        return TraceNode(copy(node.module), copy(node.func))
+
+    def __str__(self) -> str:
+        if self.params_hash is None:
+            return f"{self.module}.{self.func}"
+        else:
+            return f"{self.module}.{self.func}(0x{hex(self.params_hash)[-5:]})"
+
+    def equals_ignore_params(self, other: "TraceNode") -> bool:
+        return self.module == other.module and self.func == other.func
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, TraceNode):
+            return False
+        return (
+            self.module == other.module
+            and self.func == other.func
+            and self.params_hash == other.params_hash
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.module, self.func, self.params_hash))
+
+
+class FeverRegistryError(Exception):
+    def __str__(self) -> str:
+        return "FeverRegistryError: " + super().__str__()
+
+
+class FeverTrackerError(Exception):
+    def __str__(self) -> str:
+        return "FeverTrackerError: " + super().__str__()
