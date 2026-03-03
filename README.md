@@ -1,5 +1,10 @@
 # 🥵 Hot reloaded code replay engine 🥵
 
+<div align="center">
+<i>Hot reload the hot areas of your code while leaving the cooler ones in the fridge!</i>
+</div>
+<br>
+
 Do you like the prototyping pace of Jupyter notebooks? Do you wish you could have the
 same experience in your full code base, not just for a notebook? Are you infuriated by
 having to re-run your boot-up heavy program with slow data loading just so you can hit a
