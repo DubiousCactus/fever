@@ -325,9 +325,9 @@ class TraceReplayUI(App):
                 # Call the async set_locals method from the worker thread.
                 # We use call_from_thread to ensure it runs on the main event loop.
                 # FIXME: breaks when it's a FeverRegistryException (why?)
-                # self.call_from_thread(
-                #     self.set_locals, frame.f_locals, frame.f_code.co_name
-                # )
+                self.call_from_thread(
+                    self.set_locals, frame.f_locals, frame.f_code.co_name
+                )
             self.log_tracer(
                 Text(
                     "".join(format_exception_only(exception)).strip()
