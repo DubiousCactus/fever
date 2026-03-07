@@ -76,3 +76,7 @@ class Logger(Static):
                             Text(str(message)),
                         ),
                     )
+
+    def clear(self):
+        logger: RichLog = self.query_one(RichLog)
+        logger.clear()

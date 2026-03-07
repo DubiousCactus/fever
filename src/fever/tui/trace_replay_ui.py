@@ -170,6 +170,24 @@ class TraceReplayUI(App):
         log.debug("Script run completed.")
         self.hang(False)
 
+    def _start_runner(self):
+        if self._runner_task is not None:
+            self._runner_task.cancel()
+            self._runner_task = None
+
+        self._runner_task = asyncio.create_task(
+            self._run_trace_threaded(),
+            name="run_chain",
+        )
+
+    async def _wait_cancel_then_start(self) -> None:
+        while self._engine._call_tracker.stop_event.is_set():
+            # Wait for the user task to acknowledge the stop request by clearing the stop event
+            await asyncio.sleep(0.1)
+        if self._user_task and not self._user_task.done():
+            self._user_task.cancel()
+        self._start_runner()
+
     def run_trace(self) -> None:
         """
         Run the trace from start node to end node in a separate task. If a task is already running,
@@ -182,13 +200,11 @@ class TraceReplayUI(App):
             # Unblock any waiting threads
             self._engine._call_tracker.resume_event.set()
             log.debug("Stop and resume events set, cancelling user task...")
-            self._user_task.cancel()
-        if self._runner_task is not None:
-            self._runner_task.cancel()
-            self._runner_task = None
-        self._runner_task = asyncio.create_task(
-            self._run_trace_threaded(), name="run_chain"
-        )
+            # Now we must wait for the rendez-vous! Because the task is being resumed
+            # and it must reach the stop event on the next wrapper call
+            asyncio.create_task(self._wait_cancel_then_start())
+        else:
+            self._start_runner()
 
     def on_mount(self):
         self.run_trace()
@@ -203,6 +219,9 @@ class TraceReplayUI(App):
             # Unblock any waiting threads
             self._engine._call_tracker.resume_event.set()
             log.debug("Stop and resume events set to terminate user task")
+            while self._engine._call_tracker.stop_event.is_set():
+                # Wait for the user task to acknowledge the stop request by clearing the stop event
+                await asyncio.sleep(0.1)
             # Cancel the task
             self._user_task.cancel()
             # Wait briefly for graceful termination, then force if needed
@@ -258,9 +277,9 @@ class TraceReplayUI(App):
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
             self.hang(False)
-            # Wait for resume, but check stop_event periodically
-            while not self._engine._call_tracker.resume_event.is_set():
+            while True:
                 if self._engine._call_tracker.stop_event.is_set():
+                    self._engine._call_tracker.stop_event.clear()  # This will signal the TUI that we have acknowledged the stop request
                     log.debug("Stop event detected in tracker callback, exiting")
                     raise SystemExit("Thread termination requested")
                 self._engine._call_tracker.resume_event.wait(timeout=0.1)
@@ -319,8 +338,9 @@ class TraceReplayUI(App):
         self.query_one("#traceback", RichLog).write(formatted)
         self.hang(True)
 
-    def action_reload(self) -> None:
+    async def action_reload(self) -> None:
         self.query_one(Tracer).clear()
+        self.query_one(Logger).clear()
         self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
         self.query_one(Tracer).ready()

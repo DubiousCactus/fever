@@ -143,6 +143,7 @@ class CallTracker:
             self.resume_event.clear()
             # Check if we should stop execution (e.g., on app exit or reload)
             if self.stop_event.is_set():
+                self.stop_event.clear()  # This will signal the TUI that we have acknowledged the stop request
                 log.debug("Stop event is set, raising SystemExit to terminate thread")
                 raise SystemExit("Thread termination requested")
             callable_full_name = f"{class_.name}.{func.name}" if class_ else func.name
@@ -282,9 +283,9 @@ class CallTracker:
                 result = func_ptr(*args, **kwargs)
             except Exception as e:
                 self._on_exception(e)
-                # Wait for resume, but check stop_event periodically
-                while not self.resume_event.is_set():
+                while True:
                     if self.stop_event.is_set():
+                        self.stop_event.clear()  # This will signal the TUI that we have acknowledged the stop request
                         log.debug(
                             "Stop event detected while waiting on exception, terminating thread"
                         )
