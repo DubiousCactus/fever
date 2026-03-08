@@ -18,7 +18,8 @@ class FunctionStatsPanel(Static):
 
     def compose(self) -> ComposeResult:
         yield Static(
-            "[dim italic]Select a function node in the call graph to view stats here.[/dim italic]",
+            "[dim italic]Select a function node in the call graph to view stats here.[/dim italic]"
+            + "\n\n[dim]Currently not implemented, coming in v0.0.9![/dim]",
             markup=True,
         )
 
