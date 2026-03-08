@@ -323,6 +323,7 @@ class TraceReplayUI(App):
         )
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
+            self.call_from_thread(self.set_locals, frame.f_locals, frame.f_code.co_name)
             self.hang(False, frame=frame, module_name=module_name)
             while True:
                 if self._engine._call_tracker.stop_event.is_set():
