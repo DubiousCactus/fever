@@ -252,7 +252,7 @@ class TraceReplayUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with TabbedContent(initial="tab-graph"):
+        with TabbedContent(initial="tab-graph", id="tracer-tabs"):
             with TabPane("Trace Graph", id="tab-graph"):
                 with Vertical(id="left-panel"):
                     yield TraceNodesPanel(classes="box", id="nodes_panel")
@@ -295,7 +295,7 @@ class TraceReplayUI(App):
                 lcls.styles.border = ("solid", "gray")
                 yield lcls
 
-                with TabbedContent(initial="tab-tracer", id="tracer_tabs"):
+                with TabbedContent(initial="tab-tracer", id="sub-tracer-tabs"):
                     with TabPane("Tracer logs", id="tab-tracer"):
                         yield Tracer(classes="box", id="tracer")
                     with TabPane("Debugger", id="tab-debugger"):
@@ -394,11 +394,14 @@ class TraceReplayUI(App):
     async def action_replay(self) -> None:
         self.query_one(Tracer).clear()
         self.query_one(Logger).clear()
+        self.query_one("#debugger_panel", TerminalPanel).terminate()
         self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
         self.query_one(Tracer).ready()
-        tabs = self.query_one(TabbedContent)
+        tabs = self.query_one("#tracer-tabs", TabbedContent)
         tabs.active = "tab-logs"
+        tabs = self.query_one("#sub-tracer-tabs", TabbedContent)
+        tabs.active = "tab-tracer"
         self.run_trace()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:

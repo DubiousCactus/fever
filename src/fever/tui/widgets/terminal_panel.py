@@ -189,7 +189,7 @@ class TerminalPanel(Vertical, can_focus=True):
             yield Label("Terminal not available for this frame.")
 
     def on_mount(self) -> None:
-        if self.widget is not None:
+        if self.widget is not None and isinstance(self.widget, PDBWidget):
             self.focus()
 
     def embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
