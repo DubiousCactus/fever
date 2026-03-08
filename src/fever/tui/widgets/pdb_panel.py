@@ -1,4 +1,5 @@
 import asyncio
+import fcntl
 import os
 import pty
 
@@ -8,9 +9,6 @@ from textual.widget import Widget
 
 
 class PDBDisplay(pyte.Screen):
-    def __init__(self, width, height):
-        super().__init__(width, height)
-
     def __rich_console__(self, console, options):
         yield from self.display
 
@@ -20,7 +18,7 @@ class PDBWidget(Widget):
 
     def __init__(self):
         super().__init__()
-        self._display = PDBDisplay(width=80, height=24)
+        self._display = PDBDisplay(80, 24)
         self._out_stream = pyte.ByteStream(self._display)
         self.process_task = None
         self._ctrld_flag = False
@@ -28,69 +26,71 @@ class PDBWidget(Widget):
         self._child_pid, self._child_fd = None, None
 
     def on_mount(self) -> None:
-        asyncio.create_task(self._spawn_process_in_thread())
+        self._spawn_repl()
 
-    async def _spawn_process_in_thread(self):
-        self.process_task = asyncio.create_task(
-            asyncio.to_thread(self._fork_process_in_tty)
-        )
-        await self.process_task
-
-    def _fork_process_in_tty(self):
-        child_pid, child_fd = pty.fork()
-        if child_pid == 0:
+    def _spawn_repl(self):
+        pid, fd = pty.fork()
+        if pid == 0:
             # In child process: execute PDB++
             # os.execvp("python", ["python", "-m", "pdbpp"])
             os.execvp("python3", ["python3", "-i"])
-        else:
-            self._child_pid, self._child_fd = child_pid, child_fd
-            while True:
-                try:
-                    self._read_pdb_output(child_fd)
-                    self._send_pdb_input(child_fd)
-                except OSError:
-                    break
-                if self._ctrld_flag:
-                    break
 
-    def render(self):
-        return self._display
+        self._child_pid, self._child_fd = pid, fd
+        # Make the file descriptor non-blocking:
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
-    def terminate(self) -> None:
-        self._ctrld_flag = True
+        # Add reader callback to the event loop:
+        loop = asyncio.get_running_loop()
+        loop.add_reader(fd, self._read_ready)
+
+    def _read_ready(self):
+        assert self._child_fd is not None
+        try:
+            data = os.read(self._child_fd, 1024)
+        except BlockingIOError:
+            return
+        except OSError:
+            self._shutdown()
+            return
+
+        if not data:
+            self._shutdown()
+            return
+
+        self._out_stream.feed(data)
+        self.refresh()
+
+        if not self.has_sent and self._prompt_visible():
+            os.write(self._child_fd, b'print("hello world")\n')
+            self.has_sent = True
+
+    def _shutdown(self):
+        loop = asyncio.get_running_loop()
+
         if self._child_fd:
-            try:
-                os.close(self._child_fd)  # Close the file descriptor to signal EOF
-            except OSError:
-                pass
+            loop.remove_reader(self._child_fd)
+            os.close(self.fchild_d)
+            self.fd = None
+
         if self._child_pid:
             try:
                 os.kill(self._child_pid, 9)  # Force kill the child process
             except ProcessLookupError:
                 pass
+            self._child_pid = None
 
-        if self.process_task and not self.process_task.done():
-            self.process_task.cancel()
+    def render(self):
+        return self._display
+
+    def terminate(self) -> None:
+        self._shutdown()
 
     def _prompt_visible(self):
         for line in self._display.display:
             if line.rstrip().endswith(">>>"):
                 return True
         return False
-
-    def _read_pdb_output(self, fd) -> None:
-        data = os.read(fd, 1024)
-        if not data:
-            return
-        self._out_stream.feed(data)
-        self.refresh()
-
-    def _send_pdb_input(self, fd) -> None:
-        if self._ctrld_flag:
-            os.write(fd, b"\x04")  # Ctrl+D to signal EOF
-        elif not self.has_sent and self._prompt_visible():
-            os.write(fd, b'print("hello, world!")\n')
-            self.has_sent = True
 
 
 class PDBPanel(Vertical):
