@@ -1,12 +1,42 @@
-from typing import Tuple
+from collections import defaultdict
+from typing import List, Tuple
 
 import networkx as nx
+from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Label, Select, Static
 
 from fever.types import TraceNode
+
+
+def _grouped_options(
+    nodes,
+) -> List[Tuple[Text, TraceNode | None]]:
+    """Build Select options grouped by module, with styled labels.
+
+    Each module group is visually separated by a header-style entry
+    identifiable by a `None` value. These entries are intended to be
+    non-selectable by the user.
+    """
+    by_module: dict[str, list[TraceNode]] = defaultdict(list)
+    for n in nodes:
+        by_module[n.module].append(n)
+
+    options: List[Tuple[Text, TraceNode | None]] = []
+    for module in sorted(by_module.keys()):
+        # Add a visual module header with None as a value
+        header = Text(f"── {module} ──", style="bold dim cyan")
+        options.append((header, None))
+        for node in sorted(by_module[module], key=lambda n: str(n.func)):
+            label = Text()
+            label.append("  ")
+            label.append(str(node.func), style="bold white")
+            if node.params_hash is not None:
+                label.append(f" (0x{hex(node.params_hash)[-5:]})", style="dim")
+            options.append((label, node))
+    return options
 
 
 class TraceNodesPanel(Static):
@@ -19,13 +49,11 @@ class TraceNodesPanel(Static):
         self._refresh()
 
     def _refresh(self):
-        self.query_one("#start_node", Select).set_options(
-            [(str(n), n) for n in self._call_graph.nodes],
-        )
+        options = _grouped_options(self._call_graph.nodes)
+        self.query_one("#start_node", Select).set_options(options)
         self.ready()
 
     def compose(self) -> ComposeResult:
-        yield VerticalScroll(id="trace_nodes")
         yield Horizontal(
             Label("Start node:"),
             Select([], id="start_node"),
@@ -44,8 +72,20 @@ class TraceNodesPanel(Static):
 
     @on(Select.Changed)
     def select_changed(self, event: Select.Changed) -> None:
+        hint_label = self.query_one("#hint", Label)
+        if event.value is None:
+            # A module header was selected; revert the selection
+            event.select.value = Select.NULL
+            hint_label.update("⚠️ [bold red]Please select a function, not a module header.[/]")
+            hint_label.markup = True
+            hint_label.visible = True
+            return
+        if event.select.value is Select.NULL:
+            return
+
+        hint_label.markup = False  # Reset for standard messages
         if event.select.id == "start_node":
-            self.query_one("#hint", Label).visible = False
+            hint_label.visible = False
             end_node = self.query_one("#end_node", Select)
             end_node.clear()
             descendants = nx.descendants(self._call_graph, event.value)
@@ -54,7 +94,7 @@ class TraceNodesPanel(Static):
                 self.query_one("#no_descendants_hint", Label).visible = True
                 return
             self.query_one("#no_descendants_hint", Label).visible = False
-            end_node.set_options([(str(n), n) for n in descendants])
+            end_node.set_options(_grouped_options(descendants))
             end_node.disabled = False
 
     def on_mount(self):

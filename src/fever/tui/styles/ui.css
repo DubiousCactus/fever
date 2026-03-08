@@ -1,27 +1,98 @@
-Screen {
-    layout: grid;
-    grid-size: 3;
-    grid-columns: 1.2fr 2.3fr 1.5fr;
-    /* grid-rows: 65% 35%; */
-    grid-rows: 2fr 1fr 2fr;
+/*
+ * Override Textual defaults: TabbedContent, ContentSwitcher, and TabPane
+ * all default to height: auto, which collapses to 0 when children use
+ * height: 100%. Using 1fr forces them to fill available space.
+ */
+TabbedContent {
+    height: 1fr;
+}
+
+ContentSwitcher {
+    height: 1fr;
+}
+
+TabPane {
+    height: 1fr;
 }
 
 .box {
-    height: 100%;
     border: solid green;
+    height: 100%;
 }
 
-#graph {
-    row-span: 2;
+/* Tab 1: Trace Graph — left panel (nodes + play) + graph */
+#tab-graph {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 3fr 7fr;
 }
 
-#logger {
-    row-span: 2;
+#left-panel {
+    height: 100%;
+}
+
+#func_stats {
+    height: 1fr;
+    min-height: 25%;
+}
+
+#nodes_panel {
+    height: auto;
+    padding: 0 1;
+}
+
+#nodes_panel Horizontal {
+    height: auto;
+    padding: 1 0;
+}
+
+#nodes_panel #hint {
+    padding: 1 0;
+    margin-bottom: 1;
 }
 
 #no_descendants_hint {
     color: red;
+    margin-bottom: 1;
 }
+
+#play_btn {
+    width: 100%;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+/* Tab 2: Logs — left column (logger, fever_logs, locals) + tracer + traceback */
+#tab-logs {
+    layout: grid;
+    grid-size: 3;
+    grid-columns: 3fr 3.5fr 3.5fr;
+    grid-rows: 2fr 3fr 2fr 4fr 2fr;
+}
+
+#logger {
+    row-span: 3;
+    column-span: 2;
+}
+
+#tracer {
+    row-span: 3;
+    column-span: 2;
+}
+
+#traceback {
+    row-span: 1;
+}
+
+#fever_logs {
+    row-span: 1;
+}
+
+#lcls {
+    row-span: 2;
+}
+
+
 
 
 Center {
