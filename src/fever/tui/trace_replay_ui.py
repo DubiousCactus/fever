@@ -1,9 +1,10 @@
 import asyncio
 import logging
 import runpy
+import sys
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
-from types import TracebackType
+from types import FrameType, TracebackType
 from typing import (
     Any,
     Dict,
@@ -299,21 +300,15 @@ class TraceReplayUI(App):
                     with TabPane("Tracer logs", id="tab-tracer"):
                         yield Tracer(classes="box", id="tracer")
                     with TabPane("Debugger", id="tab-debugger"):
-                        yield TerminalPanel(
-                            "Debugger (PDB++)",
-                            id="debugger_panel",
-                        )
-                    with TabPane("Terminal", id="tab-terminal"):
-                        yield TerminalPanel(
-                            "IPython",
-                            id="terminal_panel",
-                            executable="ipython",
-                            args=["--no-autoindent"],
-                        )
+                        yield TerminalPanel("Debugger (PDB++)", id="debugger_panel")
+                    with TabPane("IPython", id="tab-terminal"):
+                        yield TerminalPanel("IPython", id="terminal_panel")
 
         yield Footer()
 
-    def tracker_callback(self, k: TraceNode, v: TraceNode) -> None:
+    def tracker_callback(
+        self, k: TraceNode, v: TraceNode, frame: FrameType, module_name: str
+    ) -> None:
         try:
             self.log_tracer(f"CALL: {k} -> {v}")
         except Exception:
@@ -328,7 +323,7 @@ class TraceReplayUI(App):
         )
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
-            self.hang(False)
+            self.hang(False, frame=frame, module_name=module_name)
             while True:
                 if self._engine._call_tracker.stop_event.is_set():
                     self._engine._call_tracker.stop_event.clear()  # This will signal the TUI that we have acknowledged the stop request
@@ -389,7 +384,7 @@ class TraceReplayUI(App):
                 )
             )
         self.query_one("#traceback", RichLog).write(formatted)
-        self.hang(True, tb)
+        self.hang(True, tb=tb)
 
     async def action_replay(self) -> None:
         self.query_one(Tracer).clear()
@@ -428,7 +423,13 @@ class TraceReplayUI(App):
         panel.set_frame_name(frame_name)
         await panel.add_locals(locals)
 
-    def hang(self, threw: bool, tb: Optional[TracebackType] = None) -> None:
+    def hang(
+        self,
+        threw: bool,
+        tb: Optional[TracebackType] = None,
+        frame: Optional[FrameType] = None,
+        module_name: Optional[str] = None,
+    ) -> None:
         """
         Give visual signal that the builder is hung, either due to an exception or
         because the function ran successfully.
@@ -441,6 +442,13 @@ class TraceReplayUI(App):
                 if tb is not None:
                     debug_panel = self.query_one("#debugger_panel", TerminalPanel)
                     self.call_from_thread(debug_panel.embed_pdb, tb)
+                elif frame is not None:
+                    terminal_panel = self.query_one("#terminal_panel", TerminalPanel)
+                    self.call_from_thread(
+                        terminal_panel.embed_ipython,
+                        frame,
+                        sys.modules.get(module_name) if module_name else None,
+                    )
             except Exception:
                 pass
 

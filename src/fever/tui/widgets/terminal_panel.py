@@ -5,7 +5,7 @@ import os
 import pty
 import struct
 import termios
-from types import TracebackType
+from types import FrameType, ModuleType, TracebackType
 from typing import List, Optional
 
 import pyte
@@ -93,10 +93,6 @@ class BasicTerminalWidget(Widget):
         self._out_stream.feed(data)
         self.refresh()
 
-        if not self.has_sent and self._prompt_visible():
-            os.write(self._child_fd, b'print("hello world")\n')
-            self.has_sent = True
-
     def _shutdown(self):
         loop = asyncio.get_running_loop()
 
@@ -117,12 +113,6 @@ class BasicTerminalWidget(Widget):
 
     def terminate(self) -> None:
         self._shutdown()
-
-    def _prompt_visible(self):
-        for line in self._display.display:
-            if line.rstrip().endswith(">>>"):
-                return True
-        return False
 
     def send_user_input(self, input_str: str) -> None:
         if self._child_fd is not None:
@@ -167,6 +157,49 @@ class PDBWidget(BasicTerminalWidget):
         loop.add_reader(fd, self._read_ready)
 
 
+class IPythonWidget(BasicTerminalWidget):
+    def __init__(
+        self, frame: Optional[FrameType] = None, module: Optional[ModuleType] = None
+    ):
+        super().__init__(None, [])
+        self.frame: Optional[FrameType] = frame
+        self.module: Optional[ModuleType] = module
+
+    def _spawn_repl(self):
+        pid, fd = pty.fork()
+        if pid == 0:
+            import sys
+
+            import IPython
+
+            # First we must use the slave TTY by reopening the file descriptors for
+            # stdin, stdout, and stderr. This is because pdb somehow manages to grab the
+            # master's TTY file descriptors.
+            sys.stdin = os.fdopen(0, "r", buffering=1)
+            sys.stdout = os.fdopen(1, "w", buffering=1)
+            sys.stderr = os.fdopen(2, "w", buffering=1)
+            sys.stdout.flush()
+            sys.stderr.flush()
+
+            shell = IPython.terminal.embed.InteractiveShellEmbed()
+            shell.mainloop(
+                local_ns=self.frame.f_locals if self.frame else None,
+                module=self.module,
+                stack_depth=6,
+            )
+
+            os._exit(0)  # Ensure the child process exits after pdb finishes
+
+        self._child_pid, self._child_fd = pid, fd
+        # Make the file descriptor non-blocking:
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        # Add reader callback to the event loop:
+        loop = asyncio.get_running_loop()
+        loop.add_reader(fd, self._read_ready)
+
+
 class TerminalPanel(Vertical, can_focus=True):
     def __init__(
         self,
@@ -188,17 +221,32 @@ class TerminalPanel(Vertical, can_focus=True):
         else:
             yield Label("Terminal not available for this frame.")
 
-    def on_mount(self) -> None:
-        if self.widget is not None and isinstance(self.widget, PDBWidget):
-            self.focus()
-
     def embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
         asyncio.create_task(self._embed_pdb(tb))
 
     async def _embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
-        self.query_one(Label).remove()
+        await self.query_one(Label).remove()
         self.widget = PDBWidget(tb)
-        self.mount(self.widget)
+        await self.mount(self.widget)
+        self.focus()
+
+    def embed_ipython(
+        self, frame: Optional[FrameType] = None, module: Optional[ModuleType] = None
+    ) -> None:
+        asyncio.create_task(self._embed_ipython(frame, module))
+
+    async def _embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
+        await self.query_one(Label).remove()
+        self.widget = PDBWidget(tb)
+        await self.mount(self.widget)
+        self.focus()
+
+    async def _embed_ipython(
+        self, frame: Optional[FrameType] = None, module: Optional[ModuleType] = None
+    ) -> None:
+        await self.query_one(Label).remove()
+        self.widget = IPythonWidget(frame, module)
+        await self.mount(self.widget)
         self.focus()
 
     def on_key(self, event) -> None:

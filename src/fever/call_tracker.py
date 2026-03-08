@@ -101,7 +101,9 @@ class CallTracker:
         console: ConsoleInterface,
         cache: Optional[Cache] = None,
         propagate_trace_on_cache_hit: bool = False,
-        on_new_call: Callable[[object, object], None] = (lambda k, v: None),
+        on_new_call: Callable[[object, object, object, str], None] = (
+            lambda k, v, f, m: None
+        ),
         on_exception: Callable = lambda: None,
     ):
         self._console = console
@@ -109,7 +111,9 @@ class CallTracker:
         self._registry = registry
         self._tracking_mode = tracking_mode
         self._cache = cache or Cache(console, enabled=False)
-        self._on_new_call: Callable[[TraceNode, TraceNode], None] = on_new_call
+        self._on_new_call: Callable[[TraceNode, TraceNode, FrameType, str], None] = (
+            on_new_call
+        )
         self._on_exception: Callable = on_exception
         self.resume_event = threading.Event()
         self.stop_event = threading.Event()
@@ -293,7 +297,7 @@ class CallTracker:
                     self.resume_event.wait(timeout=0.1)
             end = timeit.default_timer()
             log.debug(f"Call to '{callable_full_name}' took {end - start:.6f} seconds")
-            self._on_new_call(k, v)
+            self._on_new_call(k, v, caller_frame, caller_module)
             # WARN: The caller object will change as the caller function is recompiled!
             # Because we look for it in the call stack. This is normal, but we might
             # want the caller to be the function name instead of the pointer, so we
