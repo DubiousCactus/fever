@@ -28,6 +28,7 @@ from textual.widgets import (
 from fever.core import FeverCore
 from fever.tui.widgets.call_graph import CallGraph
 from fever.tui.widgets.nodes_panel import TraceNodesPanel
+from fever.tui.widgets.pdb_panel import PDBPanel
 from fever.types import TraceNode
 
 from .widgets.function_stats import FunctionStatsPanel
@@ -293,7 +294,11 @@ class TraceReplayUI(App):
                 lcls.styles.border = ("solid", "gray")
                 yield lcls
 
-                yield Tracer(classes="box", id="tracer")
+                with TabbedContent(initial="tab-tracer", id="tracer_tabs"):
+                    with TabPane("Tracer logs", id="tab-tracer"):
+                        yield Tracer(classes="box", id="tracer")
+                    with TabPane("Debugger", id="tab-debugger"):
+                        yield PDBPanel()
 
         yield Footer()
 

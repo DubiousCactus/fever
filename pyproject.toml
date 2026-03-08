@@ -18,6 +18,7 @@ dependencies = [
     "textual>=6.6.0",
     "netext>=0.3.1",
     "duper>=0.0.6",
+    "pyte>=0.8.2",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
