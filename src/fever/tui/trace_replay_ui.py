@@ -3,6 +3,7 @@ import logging
 import runpy
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
+from types import TracebackType
 from typing import (
     Any,
     Dict,
@@ -28,7 +29,7 @@ from textual.widgets import (
 from fever.core import FeverCore
 from fever.tui.widgets.call_graph import CallGraph
 from fever.tui.widgets.nodes_panel import TraceNodesPanel
-from fever.tui.widgets.pdb_panel import PDBPanel
+from fever.tui.widgets.terminal_panel import TerminalPanel
 from fever.types import TraceNode
 
 from .widgets.function_stats import FunctionStatsPanel
@@ -298,7 +299,17 @@ class TraceReplayUI(App):
                     with TabPane("Tracer logs", id="tab-tracer"):
                         yield Tracer(classes="box", id="tracer")
                     with TabPane("Debugger", id="tab-debugger"):
-                        yield PDBPanel()
+                        yield TerminalPanel(
+                            "Debugger (PDB++)",
+                            id="debugger_panel",
+                        )
+                    with TabPane("Terminal", id="tab-terminal"):
+                        yield TerminalPanel(
+                            "IPython",
+                            id="terminal_panel",
+                            executable="ipython",
+                            args=["--no-autoindent"],
+                        )
 
         yield Footer()
 
@@ -336,6 +347,7 @@ class TraceReplayUI(App):
                 )
             )
             formatted = "No traceback available."
+            tb = None
         else:
             tb = exception.__traceback__.tb_next
             if tb is None:
@@ -377,7 +389,7 @@ class TraceReplayUI(App):
                 )
             )
         self.query_one("#traceback", RichLog).write(formatted)
-        self.hang(True)
+        self.hang(True, tb)
 
     async def action_replay(self) -> None:
         self.query_one(Tracer).clear()
@@ -413,7 +425,7 @@ class TraceReplayUI(App):
         panel.set_frame_name(frame_name)
         await panel.add_locals(locals)
 
-    def hang(self, threw: bool) -> None:
+    def hang(self, threw: bool, tb: Optional[TracebackType] = None) -> None:
         """
         Give visual signal that the builder is hung, either due to an exception or
         because the function ran successfully.
@@ -423,6 +435,9 @@ class TraceReplayUI(App):
                 self.query_one(Tracer).hang(threw)
                 self.query_one(TraceNodesPanel).hang(threw)
                 # self.query_one(CallGraph).hang(threw)
+                if tb is not None:
+                    debug_panel = self.query_one("#debugger_panel", TerminalPanel)
+                    self.call_from_thread(debug_panel.embed_pdb, tb)
             except Exception:
                 pass
 
