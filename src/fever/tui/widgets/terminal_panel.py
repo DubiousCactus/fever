@@ -1,13 +1,17 @@
 import asyncio
 import fcntl
+import logging
 import os
 import pty
 import struct
 import termios
+from types import TracebackType
+from typing import List, Optional
 
 import pyte
 from textual.containers import Vertical
 from textual.widget import Widget
+from textual.widgets import Label
 
 ESCAPE_SEQUENCES = {
     "up": b"\x1b[A",
@@ -19,36 +23,49 @@ ESCAPE_SEQUENCES = {
     "enter": b"\n",
 }
 
+logging.basicConfig(
+    filename="fever_debug.log",
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
-class PDBDisplay(pyte.Screen):
+log = logging.getLogger("fever")
+
+
+class RichDisplay(pyte.Screen):
     def __rich_console__(self, console, options):
         yield from self.display
 
 
-class PDBWidget(Widget):
-    """Simple widget to display PDB content."""
-
-    def __init__(self):
+class BasicTerminalWidget(Widget):
+    def __init__(self, executable: Optional[str] = None, args: List[str] = []):
         super().__init__()
-        self._display = PDBDisplay(80, 24)
+        self._display = RichDisplay(80, 24)
         self._out_stream = pyte.ByteStream(self._display)
         self.process_task = None
         self.has_sent = False
         self._child_pid, self._child_fd = None, None
+        self.executable = executable
+        self.args = args
 
     def on_mount(self) -> None:
         self._spawn_repl()
 
     def _spawn_repl(self):
+        assert self.executable is not None, "Executable must be provided to spawn REPL"
         pid, fd = pty.fork()
         if pid == 0:
-            # In child process: execute PDB++
-            # os.execvp("python", ["python", "-m", "pdbpp"])
             os.execvpe(
-                "python3",
-                ["python3", "-i"],
+                self.executable,
+                [self.executable] + self.args,
                 {**os.environ, "TERM": "xterm-256color"},
             )
+            # IPython.embed()
+            # ipshell = InteractiveShellEmbed(
+            #     config=Config(),
+            #     banner1="Dropping into IPython",
+            #     exit_msg="Leaving Interpreter, back to program.",
+            # )
 
         self._child_pid, self._child_fd = pid, fd
         # Make the file descriptor non-blocking:
@@ -116,33 +133,93 @@ class PDBWidget(Widget):
             os.write(self._child_fd, seq)
 
 
-class PDBPanel(Vertical, can_focus=True):
-    """Container for the Debugger interface."""
+class PDBWidget(BasicTerminalWidget):
+    def __init__(self, tb: Optional[TracebackType] = None):
+        super().__init__(None, [])
+        self.traceback: Optional[TracebackType] = tb
+
+    def _spawn_repl(self):
+        pid, fd = pty.fork()
+        if pid == 0:
+            import pdb
+            import sys
+
+            # First we must use the slave TTY by reopening the file descriptors for
+            # stdin, stdout, and stderr. This is because pdb somehow manages to grab the
+            # master's TTY file descriptors.
+            sys.stdin = os.fdopen(0, "r", buffering=1)
+            sys.stdout = os.fdopen(1, "w", buffering=1)
+            sys.stderr = os.fdopen(2, "w", buffering=1)
+            sys.stdout.flush()
+            sys.stderr.flush()
+
+            pdb.post_mortem(self.traceback)
+
+            os._exit(0)  # Ensure the child process exits after pdb finishes
+
+        self._child_pid, self._child_fd = pid, fd
+        # Make the file descriptor non-blocking:
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+        # Add reader callback to the event loop:
+        loop = asyncio.get_running_loop()
+        loop.add_reader(fd, self._read_ready)
+
+
+class TerminalPanel(Vertical, can_focus=True):
+    def __init__(
+        self,
+        title: str,
+        executable: Optional[str] = None,
+        args: List[str] = [],
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.executable = executable
+        self.args = args
+        self.border_title = title
+        self.widget = None
 
     def compose(self):
-        yield PDBWidget()
+        if self.executable is not None:
+            self.widget = BasicTerminalWidget(self.executable, self.args)
+            yield self.widget
+        else:
+            yield Label("Terminal not available for this frame.")
 
     def on_mount(self) -> None:
-        self.widget = self.query_one(PDBWidget)
-        self.border_title = "Debugger (PDB++)"
+        if self.widget is not None:
+            self.focus()
+
+    def embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
+        asyncio.create_task(self._embed_pdb(tb))
+
+    async def _embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
+        self.query_one(Label).remove()
+        self.widget = PDBWidget(tb)
+        self.mount(self.widget)
         self.focus()
 
     def on_key(self, event) -> None:
         if event.key == "ctrl+d":
             self.terminate()
+        elif event.key == "escape":
+            self.blur()
+            self.styles.border = ("solid", "gray")
         else:
             self._handle_user_input(event)
         event.stop()
 
     def on_paste(self, event) -> None:
-        self.widget.send_user_input(event.text)
+        if self.widget is None:
+            self.widget.send_user_input(event.text)
         event.stop()
 
     def _handle_user_input(self, event) -> None:
-        if event.key == "escape":
-            self.blur()
-            self.styles.border = ("solid", "gray")
-        elif event.is_printable:
+        if self.widget is None:
+            return
+        if event.is_printable:
             self.widget.send_user_input(event.character)
         elif event.key in ESCAPE_SEQUENCES:
             # Non printable characters: up/down arrows, etc. Is that handled by the terminal emulator or by the program??
@@ -161,6 +238,8 @@ class PDBPanel(Vertical, can_focus=True):
         )
 
     def on_resize(self, event) -> None:
+        if self.widget is None:
+            return
         new_size = event.size
         child_fd = self.widget._child_fd
         if child_fd is None:
@@ -176,7 +255,13 @@ class PDBPanel(Vertical, can_focus=True):
         self.styles.border = ("solid", "green")
 
     def terminate(self) -> None:
+        if self.widget is None:
+            return
         self.widget.terminate()
         self.widget.remove()
-        self.mount(PDBWidget())
-        self.widget = self.query_one(PDBWidget)
+        if self.executable is not None:
+            self.widget = BasicTerminalWidget(self.executable, self.args)
+            self.mount(self.widget)
+        else:
+            self.widget = None
+            self.mount(Label("Terminal not available for this frame."))
