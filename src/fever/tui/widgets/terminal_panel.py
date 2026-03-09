@@ -34,7 +34,13 @@ log = logging.getLogger("fever")
 
 class RichDisplay(pyte.Screen):
     def __rich_console__(self, console, options):
-        yield from self.display
+        buffer = self.display
+        buffer[self.cursor.y] = (
+            buffer[self.cursor.y][: self.cursor.x]
+            + "_"
+            + buffer[self.cursor.y][self.cursor.x + 1 :]
+        )
+        yield from buffer
 
 
 class BasicTerminalWidget(Widget):
