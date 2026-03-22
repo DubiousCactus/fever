@@ -33,11 +33,20 @@ log = logging.getLogger("fever")
 
 
 class RichDisplay(pyte.Screen):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cursor_char = "_"
+
+    async def blink(self, interval_sec: float):
+        while True:
+            await asyncio.sleep(interval_sec)
+            self._cursor_char = " " if self._cursor_char == "_" else "_"
+
     def __rich_console__(self, console, options):
         buffer = self.display
         buffer[self.cursor.y] = (
             buffer[self.cursor.y][: self.cursor.x]
-            + "_"
+            + self._cursor_char
             + buffer[self.cursor.y][self.cursor.x + 1 :]
         )
         yield from buffer
@@ -66,12 +75,6 @@ class BasicTerminalWidget(Widget):
                 [self.executable] + self.args,
                 {**os.environ, "TERM": "xterm-256color"},
             )
-            # IPython.embed()
-            # ipshell = InteractiveShellEmbed(
-            #     config=Config(),
-            #     banner1="Dropping into IPython",
-            #     exit_msg="Leaving Interpreter, back to program.",
-            # )
 
         self._child_pid, self._child_fd = pid, fd
         # Make the file descriptor non-blocking:
@@ -80,7 +83,16 @@ class BasicTerminalWidget(Widget):
 
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
+        _ = loop.create_task(self._refresh_display(0.016))
+        _ = loop.create_task(self._display.blink(0.5))
         loop.add_reader(fd, self._read_ready)
+
+    async def _refresh_display(self, interval_sec: float):
+        # Refresh at ~60fps to ensure the display updates even if no new data is
+        # received (e.g., for cursor blinking)
+        while True:
+            await asyncio.sleep(interval_sec)
+            self.refresh()
 
     def _read_ready(self):
         assert self._child_fd is not None
@@ -160,6 +172,8 @@ class PDBWidget(BasicTerminalWidget):
 
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
+        _ = loop.create_task(self._refresh_display(0.016))
+        _ = loop.create_task(self._display.blink(1.0))
         loop.add_reader(fd, self._read_ready)
 
 
@@ -187,7 +201,9 @@ class IPythonWidget(BasicTerminalWidget):
             sys.stdout.flush()
             sys.stderr.flush()
 
-            shell = IPython.terminal.embed.InteractiveShellEmbed()
+            shell = IPython.terminal.embed.InteractiveShellEmbed(
+                banner1="IPython session for the currently hanged frame",
+            )
             shell.mainloop(
                 local_ns=self.frame.f_locals if self.frame else None,
                 module=self.module,
@@ -203,6 +219,8 @@ class IPythonWidget(BasicTerminalWidget):
 
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
+        _ = loop.create_task(self._display.blink(1.0))
+        _ = loop.create_task(self._refresh_display(0.016))
         loop.add_reader(fd, self._read_ready)
 
 
