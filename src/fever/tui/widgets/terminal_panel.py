@@ -294,7 +294,8 @@ class TerminalPanel(Vertical, can_focus=True):
         if event.is_printable:
             self.widget.send_user_input(event.character)
         elif event.key in ESCAPE_SEQUENCES:
-            # Non printable characters: up/down arrows, etc. Is that handled by the terminal emulator or by the program??
+            # Non printable characters: up/down arrows, etc. Is that handled by the
+            # terminal emulator or by the program??
             self.widget.send_escape_seq(ESCAPE_SEQUENCES[event.key])
         else:
             self.blink()
@@ -312,7 +313,7 @@ class TerminalPanel(Vertical, can_focus=True):
     def on_resize(self, event) -> None:
         if self.widget is None:
             return
-        new_size = event.size
+        new_size = event.virtual_size
         child_fd = self.widget._child_fd
         if child_fd is None:
             return
