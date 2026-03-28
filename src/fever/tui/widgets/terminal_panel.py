@@ -62,8 +62,8 @@ class RichPyteDisplay(pyte.Screen):
             self._reset_history()
 
     def _scroll_end(self) -> None:
-        # if self.parent.is_vertical_scrollbar_grabbed or not self.parent.is_at_bottom:
-        #     return
+        if self.parent.is_vertical_scrollbar_grabbed:
+            return
         self.parent.scroll_end(animate=False, immediate=True, x_axis=False)
 
     def index(self) -> None:
