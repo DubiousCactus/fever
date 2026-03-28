@@ -330,12 +330,6 @@ class TerminalPanel(Static, can_focus=True):
     ) -> None:
         asyncio.create_task(self._embed_ipython(frame, module))
 
-    async def _embed_pdb(self, tb: Optional[TracebackType] = None) -> None:
-        await self.query_one(Label).remove()
-        self.widget = PDBWidget(tb)
-        await self.mount(self.widget)
-        self.focus()
-
     async def _embed_ipython(
         self, frame: Optional[FrameType] = None, module: Optional[ModuleType] = None
     ) -> None:
@@ -355,7 +349,7 @@ class TerminalPanel(Static, can_focus=True):
         event.stop()
 
     def on_paste(self, event) -> None:
-        if self.widget is None:
+        if self.widget is not None:
             self.widget.send_user_input(event.text)
         event.stop()
 
