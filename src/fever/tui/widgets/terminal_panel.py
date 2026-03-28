@@ -68,7 +68,11 @@ class RichPyteDisplay(pyte.Screen):
         if self.cursor.y == bottom:
             self.history.append(self.display[top])
             self.parent.virtual_size = self.virtual_size
-            self.parent.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.parent.call_after_refresh(
+                lambda: self.parent.scroll_end(
+                    animate=False, immediate=True, x_axis=False
+                )
+            )
             self.parent.refresh()
 
         super().index()
