@@ -82,12 +82,12 @@ TabPane {
 }
 
 PDBPanel {
-    height: 100%;
+    height: auto;
     border: solid gray;
 }
 
 PDBWidget {
-    height: 100%;
+    height: auto;
 }
 
 #tab-debugger {
