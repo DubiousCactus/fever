@@ -61,19 +61,19 @@ class RichPyteDisplay(pyte.Screen):
         if how == 3:
             self._reset_history()
 
+    def _scroll_end(self) -> None:
+        # if self.parent.is_vertical_scrollbar_grabbed or not self.parent.is_at_bottom:
+        #     return
+        self.parent.scroll_end(animate=False, immediate=True, x_axis=False)
+
     def index(self) -> None:
         """Overloaded to update top history with the removed lines."""
         top, bottom = self.margins or pyte.screens.Margins(0, self.lines - 1)
 
         if self.cursor.y == bottom:
-            self.history.append(self.display[top])
+            self.history.append(str(self.display[top]))
             self.parent.virtual_size = self.virtual_size
-            self.parent.call_after_refresh(
-                lambda: self.parent.scroll_end(
-                    animate=False, immediate=True, x_axis=False
-                )
-            )
-            self.parent.refresh()
+            self.parent.call_after_refresh(self._scroll_end)
 
         super().index()
 
@@ -171,7 +171,6 @@ class BasicTerminalWidget(ScrollView):
             return
 
         self._out_stream.feed(data)
-        self.scroll_end(animate=False, immediate=True, x_axis=False)
         self.refresh()
 
     def _shutdown(self):
