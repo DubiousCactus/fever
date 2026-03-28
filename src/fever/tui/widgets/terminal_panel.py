@@ -86,6 +86,7 @@ class RichPyteDisplay(pyte.Screen):
         while True:
             await asyncio.sleep(interval_sec)
             self._cursor_char = " " if self._cursor_char == "_" else "_"
+            self.parent.refresh()
 
     @property
     def virtual_size(self) -> Size:
