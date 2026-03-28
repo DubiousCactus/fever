@@ -1,14 +1,13 @@
 import asyncio
 import fcntl
 import logging
-import math
 import os
 import pty
 import struct
 import termios
 from collections import deque
 from types import FrameType, ModuleType, TracebackType
-from typing import Any, Callable, List, Optional
+from typing import Any, List, Optional
 
 import pyte
 from rich.segment import Segment
@@ -36,110 +35,16 @@ logging.basicConfig(
 log = logging.getLogger("fever")
 
 
-class HistoryScreen(pyte.Screen):
-    """A :class:`~pyte.screens.Screen` subclass, which keeps track
-    of screen history and allows pagination. This is not linux-specific,
-    but still useful; see page 462 of VT520 User's Manual.
-
-    :param int history: total number of history lines to keep; is split
-                        between top and bottom queues.
-    :param int ratio: defines how much lines to scroll on :meth:`next_page`
-                      and :meth:`prev_page` calls.
-
-    .. attribute:: history
-
-       A pair of history queues for top and bottom margins accordingly;
-       here's the overall screen structure::
-
-            [ 1: .......]
-            [ 2: .......]  <- top history
-            [ 3: .......]
-            ------------
-            [ 4: .......]  s
-            [ 5: .......]  c
-            [ 6: .......]  r
-            [ 7: .......]  e
-            [ 8: .......]  e
-            [ 9: .......]  n
-            ------------
-            [10: .......]
-            [11: .......]  <- bottom history
-            [12: .......]
-
-    .. note::
-
-       Don't forget to update :class:`~pyte.streams.Stream` class with
-       appropriate escape sequences -- you can use any, since pagination
-       protocol is not standardized, for example::
-
-           Stream.escape["N"] = "next_page"
-           Stream.escape["P"] = "prev_page"
-    """
-
-    _wrapped = set(pyte.Stream.events)
-    _wrapped.update(["next_page", "prev_page"])
-
-    def __init__(
-        self, columns: int, lines: int, history: int = 100, ratio: float = 0.5
-    ) -> None:
-        self.history = pyte.History(
-            deque(maxlen=history), deque(maxlen=history), float(ratio), history, history
-        )
-
+class RichPyteDisplay(pyte.Screen):
+    def __init__(self, parent, columns: int, lines: int, history_size: int = 300):
+        self.history = deque(maxlen=history_size)
+        self._cursor_char = "_"
+        self.initialized = False
+        self.parent = parent
         super().__init__(columns, lines)
 
-    def _make_wrapper(
-        self, event: str, handler: Callable[..., Any]
-    ) -> Callable[..., Any]:
-        def inner(*args: Any, **kwargs: Any) -> Any:
-            self.before_event(event)
-            result = handler(*args, **kwargs)
-            self.after_event(event)
-            return result
-
-        return inner
-
-    def __getattribute__(self, attr: str) -> Callable[..., Any]:
-        value = super().__getattribute__(attr)
-        if attr in HistoryScreen._wrapped:
-            return HistoryScreen._make_wrapper(self, attr, value)
-        else:
-            return value  # type: ignore[no-any-return]
-
-    def before_event(self, event: str) -> None:
-        """Ensure a screen is at the bottom of the history buffer.
-
-        :param str event: event name, for example ``"linefeed"``.
-        """
-        if event not in ["prev_page", "next_page"]:
-            while self.history.position < self.history.size:
-                self.next_page()
-
-    def after_event(self, event: str) -> None:
-        """Ensure all lines on a screen have proper width (:attr:`columns`).
-
-        Extra characters are truncated, missing characters are filled
-        with whitespace.
-
-        :param str event: event name, for example ``"linefeed"``.
-        """
-        if event in ["prev_page", "next_page"]:
-            for line in self.buffer.values():
-                for x in line:
-                    if x > self.columns:
-                        line.pop(x)
-
-        # If we're at the bottom of the history buffer and `DECTCEM`
-        # mode is set -- show the cursor.
-        self.cursor.hidden = not (
-            self.history.position == self.history.size
-            and pyte.modes.DECTCEM in self.mode
-        )
-
     def _reset_history(self) -> None:
-        self.history.top.clear()
-        self.history.bottom.clear()
-        self.history = self.history._replace(position=self.history.size)
+        self.history.clear()
 
     def reset(self) -> None:
         """Overloaded to reset screen history state: history position
@@ -158,80 +63,19 @@ class HistoryScreen(pyte.Screen):
 
     def index(self) -> None:
         """Overloaded to update top history with the removed lines."""
-        top, bottom = self.margins or pyte.Margins(0, self.lines - 1)
+        top, bottom = self.margins or pyte.screens.Margins(0, self.lines - 1)
 
         if self.cursor.y == bottom:
-            self.history.top.append(self.buffer[top])
+            self.history.append(self.display[top])
+            self.parent.virtual_size = self.virtual_size
+            self.parent.scroll_end(animate=False, immediate=True, x_axis=False)
+            self.parent.refresh()
 
         super().index()
 
-    def reverse_index(self) -> None:
-        """Overloaded to update bottom history with the removed lines."""
-        top, bottom = self.margins or pyte.Margins(0, self.lines - 1)
-
-        if self.cursor.y == top:
-            self.history.bottom.append(self.buffer[bottom])
-
-        super().reverse_index()
-
-    def prev_page(self) -> None:
-        """Move the screen page up through the history buffer. Page
-        size is defined by ``history.ratio``, so for instance
-        ``ratio = .5`` means that half the screen is restored from
-        history on page switch.
-        """
-        if self.history.position > self.lines and self.history.top:
-            mid = min(
-                len(self.history.top), int(math.ceil(self.lines * self.history.ratio))
-            )
-
-            self.history.bottom.extendleft(
-                self.buffer[y] for y in range(self.lines - 1, self.lines - mid - 1, -1)
-            )
-            self.history = self.history._replace(position=self.history.position - mid)
-
-            for y in range(self.lines - 1, mid - 1, -1):
-                self.buffer[y] = self.buffer[y - mid]
-            for y in range(mid - 1, -1, -1):
-                self.buffer[y] = self.history.top.pop()
-
-            self.dirty = set(range(self.lines))
-
-    def next_page(self) -> None:
-        """Move the screen page down through the history buffer."""
-        if self.history.position < self.history.size and self.history.bottom:
-            mid = min(
-                len(self.history.bottom),
-                int(math.ceil(self.lines * self.history.ratio)),
-            )
-
-            self.history.top.extend(self.buffer[y] for y in range(mid))
-            self.history = self.history._replace(position=self.history.position + mid)
-
-            for y in range(self.lines - mid):
-                self.buffer[y] = self.buffer[y + mid]
-            for y in range(self.lines - mid, self.lines):
-                self.buffer[y] = self.history.bottom.popleft()
-
-            self.dirty = set(range(self.lines))
-
-
-class RichPyteDisplay(pyte.Screen):
-    def __init__(self, parent, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._cursor_char = "_"
-        self._history_len = 1000
-        self.history = [] * args[1]
-        self.head_pointer = 0
-        self.n_rows_displayable = args[1]
-        self.initialized = False
-        self.parent = parent
-
     def resize(self, lines: int, columns: int):
         super().resize(lines, columns)
-        self.n_rows_displayable = lines - 1
-        if len(self.history) < lines:
-            self.expand_columns((lines - len(self.history)))
+        self.parent.virtual_size = self.virtual_size
         self.initialized = True
 
     async def blink(self, interval_sec: float):
@@ -241,63 +85,35 @@ class RichPyteDisplay(pyte.Screen):
 
     @property
     def virtual_size(self) -> Size:
-        return Size(self.columns, len(self.history))
+        return Size(self.columns - 2, len(self.history) + self.lines)
 
-    def expand_columns(self, extra_lines: int):
-        self.history.extend([" " * self.columns] * extra_lines)
-        self.parent.virtual_size = self.virtual_size
-
-    # TODO: To enable scrolling, the simplest  way would be to obtain the raw buffer
-    # with all history in side it. But does pyte provide that? If not, we need a
-    # history buffer to be stored in here, and we need to fill it up with pyte's
-    # buffer when necessary, and to draw that one instead of the current buffer.
-
-    # There is a HistoryScreen from pyte, but it wouldn't allow smooth scrolling. So
-    # I could have a history buffer that stores every line, and let the widget
-    # handle scrolling. On render, we would render the entire history with
-    # autoscroll to the bottom. We need to let pyte believe the size is the widget's
-    # virtual size, but then we need to strip the buffer to update the history with
-    # only new lines, no pading.
-    # WARN: When the widget is resized, we actually tell the vterm and pyte's screen
-    # that they have one more row than can be displayed. This allows us to detect
-    # scrolling down, when the cursor.y is greater than the widget's actual size.
-    # if len(self.dirty) > 0:
-    #     # print("Updating history with dirty lines:", self.dirty)
-    #     print(
-    #         f"Cursor y: {self.cursor.y}, line pointer: {self.head_pointer}, displayable rows: {self.n_rows_displayable}"
-    #     )
-    #     if self.cursor.y > self.n_rows_displayable - 1:
-    def render_line(self, y: int) -> Strip:
-        # WARN: When the widget is resized, we actually tell the vterm and pyte's screen
-        # that they have one more row than can be displayed. This allows us to detect
-        # overflow, when the cursor.y is greater than the widget's actual size.
-        if len(self.dirty) > 0:
-            print(
-                f"Cursor y: {self.cursor.y}, line pointer: {self.head_pointer}, displayable rows: {self.n_rows_displayable}"
+    def _buffer_line_with_cursor(self, buffer_y: int) -> str:
+        buffer_line = self.display[buffer_y]
+        if buffer_y == self.cursor.y:
+            buffer_line = (
+                buffer_line[: self.cursor.x]
+                + self._cursor_char
+                + buffer_line[self.cursor.x + 1 :]
             )
-            if self.cursor.y > self.n_rows_displayable - 1:
-                # INFO: We are overflowing! We need to increment the head pointer by the
-                # difference between the cursor y and the displayable rows, to keep
-                # track of where the buffer starts in the history buffer.
-                self.head_pointer += self.cursor.y - (self.n_rows_displayable - 1)
-                print(f"Overflow detected! New head pointer: {self.head_pointer}")
-                self.expand_columns((self.cursor.y - (self.n_rows_displayable - 1)))
-            # TODO: Use a diff display instead of copying the entire buffer into the
-            # history buffer!
-            for i, line in enumerate(self.display):
-                self.history[self.head_pointer + i] = line
-            self.dirty.clear()
-        buffer = self.history
-        # FIXME: The blinking cursor mechanic should be updated such that only the
-        # returned Strip that corresponds to the cursor line is updated with the cursor
-        # character, not the entire buffer.
-        buffer[self.head_pointer + self.cursor.y] = (
-            buffer[self.head_pointer + self.cursor.y][: self.cursor.x]
-            + self._cursor_char
-            + buffer[self.head_pointer + self.cursor.y][self.cursor.x + 1 :]
-        )
-        # TODO: Add style to the segment?
-        return Strip([Segment(buffer[y])])
+        return buffer_line
+
+    def render_line(self, y: int) -> Strip:
+        total_lines = len(self.history) + self.lines
+        if y < 0 or y >= total_lines:
+            return Strip.blank(self.parent.size.width)
+
+        if len(self.history) == 0:
+            return (
+                Strip([Segment(self._buffer_line_with_cursor(y))])
+                if y < self.lines
+                else Strip.blank(self.parent.size.width)
+            )
+        elif y < len(self.history):
+            return Strip([Segment(self.history[y])])
+        else:
+            return Strip(
+                [Segment(self._buffer_line_with_cursor(y - len(self.history)))]
+            )
 
 
 class BasicTerminalWidget(ScrollView):
@@ -380,7 +196,7 @@ class BasicTerminalWidget(ScrollView):
         """Render a line of the widget. y is relative to the top of the widget."""
         _, scroll_y = self.scroll_offset  # The current scroll position
         y += scroll_y  # The line at the top of the widget is now `scroll_y`, not zero!
-        if y >= self._display.lines or not self._display.initialized:
+        if not self._display.initialized:
             return Strip.blank(self.size.width)
         return self._display.render_line(y)
 
@@ -574,9 +390,9 @@ class TerminalPanel(Static, can_focus=True):
             return
         cols, rows = new_size.width, new_size.height
 
-        winsize = struct.pack("HHHH", rows + 1, cols, 0, 0)
+        winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(child_fd, termios.TIOCSWINSZ, winsize)
-        self.widget._display.resize(rows + 1, cols)
+        self.widget._display.resize(rows, cols)
         print(f"New virtual size: {self.virtual_size}")
         self.refresh()
 
