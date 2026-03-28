@@ -152,16 +152,8 @@ class BasicTerminalWidget(ScrollView):
 
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
-        _ = loop.create_task(self._refresh_display(0.016))
         _ = loop.create_task(self._display.blink(0.5))
         loop.add_reader(fd, self._read_ready)
-
-    async def _refresh_display(self, interval_sec: float):
-        # Refresh at ~60fps to ensure the display updates even if no new data is
-        # received (e.g., for cursor blinking)
-        while True:
-            await asyncio.sleep(interval_sec)
-            self.refresh()
 
     def _read_ready(self):
         assert self._child_fd is not None
@@ -247,7 +239,6 @@ class PDBWidget(BasicTerminalWidget):
 
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
-        _ = loop.create_task(self._refresh_display(0.016))
         _ = loop.create_task(self._display.blink(1.0))
         loop.add_reader(fd, self._read_ready)
 
@@ -295,7 +286,6 @@ class IPythonWidget(BasicTerminalWidget):
         # Add reader callback to the event loop:
         loop = asyncio.get_running_loop()
         _ = loop.create_task(self._display.blink(1.0))
-        _ = loop.create_task(self._refresh_display(0.016))
         loop.add_reader(fd, self._read_ready)
 
 
