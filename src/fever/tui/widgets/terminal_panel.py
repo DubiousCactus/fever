@@ -122,16 +122,20 @@ class RichPyteDisplay(pyte.Screen):
 
 
 class BasicTerminalWidget(ScrollView):
-    def __init__(self, executable: Optional[str] = None, args: List[str] = []):
+    def __init__(
+        self,
+        history_size: int = 300,
+        executable: Optional[str] = None,
+        args: List[str] = [],
+    ):
         super().__init__()
-        self._display = RichPyteDisplay(self, 80, 1)
+        self._display = RichPyteDisplay(self, 80, 1, history_size)
         self._out_stream = pyte.ByteStream(self._display)
         self.process_task = None
         self.has_sent = False
         self._child_pid, self._child_fd = None, None
         self.executable = executable
         self.args = args
-        self.virtual_size = self._display.virtual_size
 
     def on_mount(self) -> None:
         self._spawn_repl()
@@ -207,10 +211,14 @@ class BasicTerminalWidget(ScrollView):
         if self._child_fd is not None:
             os.write(self._child_fd, seq)
 
+    def resize(self, rows: int, cols: int) -> None:
+        self._display.resize(rows, cols)
+        self.virtual_size = self._display.virtual_size
+
 
 class PDBWidget(BasicTerminalWidget):
     def __init__(self, tb: Optional[TracebackType] = None):
-        super().__init__(None, [])
+        super().__init__(0, None, [])
         self.traceback: Optional[TracebackType] = tb
 
     def _spawn_repl(self):
@@ -247,7 +255,7 @@ class IPythonWidget(BasicTerminalWidget):
     def __init__(
         self, frame: Optional[FrameType] = None, module: Optional[ModuleType] = None
     ):
-        super().__init__(None, [])
+        super().__init__(300, None, [])
         self.frame: Optional[FrameType] = frame
         self.module: Optional[ModuleType] = module
 
@@ -305,7 +313,7 @@ class TerminalPanel(Static, can_focus=True):
 
     def compose(self):
         if self.executable is not None:
-            self.widget = BasicTerminalWidget(self.executable, self.args)
+            self.widget = BasicTerminalWidget(300, self.executable, self.args)
             yield self.widget
         else:
             yield Label("Terminal not available for this frame.")
@@ -380,8 +388,7 @@ class TerminalPanel(Static, can_focus=True):
 
         winsize = struct.pack("HHHH", rows, cols, 0, 0)
         fcntl.ioctl(child_fd, termios.TIOCSWINSZ, winsize)
-        self.widget._display.resize(rows, cols)
-        print(f"New virtual size: {self.virtual_size}")
+        self.widget.resize(rows, cols)
         self.refresh()
 
     def on_focus(self, event) -> None:
@@ -393,7 +400,7 @@ class TerminalPanel(Static, can_focus=True):
         self.widget.terminate()
         self.widget.remove()
         if self.executable is not None:
-            self.widget = BasicTerminalWidget(self.executable, self.args)
+            self.widget = BasicTerminalWidget(300, self.executable, self.args)
             self.mount(self.widget)
         else:
             self.widget = None

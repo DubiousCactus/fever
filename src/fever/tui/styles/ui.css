@@ -81,6 +81,15 @@ TabPane {
     height: 1fr;
 }
 
+
+TerminalPanel {
+    height: 1fr;
+}
+
+BasicTerminalWidget {
+    height: 100%;
+}
+
 PDBPanel {
     height: auto;
     border: solid gray;
