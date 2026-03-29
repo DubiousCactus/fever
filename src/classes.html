@@ -1,0 +1,144 @@
+<html>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+      <div class="mermaid">
+    
+        classDiagram
+          class ASTAnalyzer {
+            _console
+            _context : dict
+            _context_stack : deque
+            _source : NoneType, str
+            \_\_init\_\_(console: ConsoleInterface)
+            _reset_context()
+            analyze(name: str, module_obj: object, source_path: Optional[str], show_ast) FeverModule
+            visit_ClassDef(node: ast.ClassDef) Any
+            visit_FunctionDef(node: ast.FunctionDef) Any
+            visit_Lambda(node: ast.Lambda) Any
+          }
+          class CallTracker {
+            _call_graph
+            _console
+            _registry
+            \_\_init\_\_(registry: Registry, console: ConsoleInterface)
+            plot()
+            track_calls(func: Callable, fever_class: Optional[FeverClass]) Callable
+          }
+          class ConsoleInterface {
+            _print
+            console : Optional[Console]
+            \_\_init\_\_(console: Optional[Console])
+            print()
+          }
+          class DependencyTracker {
+            _console
+            _dep_graph
+            _show_skips : bool
+            _user_modules : Dict[str, str], dict
+            absolute_ignore_dirs
+            all_imports : List[str]
+            ignore_dirs : list
+            on_module_load_callback : Callable
+            \_\_init\_\_(console: ConsoleInterface, on_module_load_callback: Callable)
+            cleanup()
+            create_module(spec: ModuleSpec) ModuleType | None
+            exec_module(module) None
+            find_spec(fullname: str, path: Sequence[str] | None, target) ModuleSpec | None
+            get_dependencies(module_name: str) List[str]
+            get_dependent_modules(module_name: str) List[Tuple[str, str, object]]
+            invalidate_caches()
+            plot()
+            setup(show_skips: bool)
+          }
+          class FeverClass {
+            ast_node
+            code : Optional[str]
+            hash : int
+            name : str
+            obj : object
+            uid : UUID
+            \_\_hash\_\_() int
+            \_\_init\_\_(self, name: str, uid: UUID, ast_node: ast.ClassDef, obj: object, hash: int, code: Optional[str]) None
+          }
+          class FeverCore {
+            _ast_analyzer
+            _call_tracker
+            _console_if
+            _verbosity : int
+            dependency_tracker
+            registry
+            \_\_init\_\_(rich_console: Optional[Console])
+            _track_class(class_: FeverClass, module: FeverModule) None
+            _track_function(func: FeverFunction, module: FeverModule) None
+            _track_method(method: FeverFunction, class_: FeverClass, module: FeverModule) None
+            _track_module(module: FeverModule) None
+            cleanup()
+            on_module_load(module_name: str, code_str: str) None
+            on_new_import(module_name: str, module: object)* None
+            plot_call_graph()
+            plot_dependency_graph()
+            reload()
+            rerun(entry_point: UUID)*
+            setup()
+          }
+          class FeverFunction {
+            args : List[Any]
+            ast_node
+            code : Optional[str]
+            hash : int
+            name : str
+            obj : object
+            uid : UUID
+            \_\_hash\_\_() int
+            \_\_init\_\_(self, name: str, uid: UUID, ast_node: ast.FunctionDef, args: List[Any], obj: object, hash: int, code: Optional[str]) None
+          }
+          class FeverLambda {
+            args : List[Any]
+            ast_node
+            obj : Optional[object]
+            uid : UUID
+            \_\_init\_\_(self, uid: UUID, ast_node: ast.Lambda, args: List[Any], obj: Optional[object]) None
+          }
+          class FeverModule {
+            classes : List[FeverClass]
+            functions : List[FeverFunction]
+            lambdas : List[FeverLambda]
+            methods : Dict[FeverClass, List[FeverFunction]]
+            obj : object
+            root : str
+            \_\_init\_\_(self, root: str, obj: object, classes: List[FeverClass], functions: List[FeverFunction], methods: Dict[FeverClass, List[FeverFunction]], lambdas: List[FeverLambda]) None
+          }
+          class GenericClass {
+          }
+          class Registry {
+            _CLASS_METHOD_PTRS : defaultdict
+            _CLASS_PTRS : defaultdict
+            _FUNCTION_PTRS : defaultdict
+            _inventory : Dict[str, FeverModule]
+            \_\_init\_\_() None
+            _add_class_code_pointer(module_name: str, class_: FeverClass) None
+            _add_function_code_pointer(module_name: str, func: FeverFunction) None
+            _add_method_code_pointer(module_name: str, class_: FeverClass, method: FeverFunction) None
+            add_class(module_name: str, class_: FeverClass) None
+            add_function(module_name: str, func: FeverFunction) None
+            add_method(module_name: str, class_: FeverClass, method: FeverFunction) None
+            add_module(module_name: str, module: FeverModule) None
+            cleanup() None
+            find_class_by_name(name: str, module_name: str) FeverClass | None
+            find_function_by_name(name: str, module_name: str) FeverFunction | None
+            find_method_by_name(name: str, class_name: str, module_name: str) FeverFunction | None
+          }
+          Registry --> FeverModule : _inventory
+          ASTAnalyzer --* FeverCore : _ast_analyzer
+          CallTracker --* FeverCore : _call_tracker
+          DependencyTracker --* FeverCore : dependency_tracker
+          Registry --* FeverCore : registry
+          ConsoleInterface --* FeverCore : _console_if
+          Registry --o CallTracker : _registry
+          ConsoleInterface --o ASTAnalyzer : _console
+          ConsoleInterface --o CallTracker : _console
+          ConsoleInterface --o DependencyTracker : _console
+  
+       </div>
+  </body>
+</html>
