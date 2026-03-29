@@ -175,6 +175,7 @@ class BasicTerminalWidget(ScrollView):
             return
 
         self._out_stream.feed(data)
+        self.scroll_end(animate=False, immediate=True, x_axis=False)
         self.refresh()
 
     def _shutdown(self):
