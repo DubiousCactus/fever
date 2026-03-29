@@ -104,7 +104,7 @@ new code. Pretty sweet, right?
 - [x] v0.0.5: Add interface to file watcher to trigger reload events
 - [x] v0.0.6: Implement a reliable (and unit-tested) smart caching mechanism
 - [x] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
-- [ ] v0.0.8: PDB++ TUI integration
+- [x] v0.0.8: PDB++ TUI integration
 - [ ] v0.0.9: Live trace graph update, smarter tracing, trace stats display
 - [ ] v0.1.0: Rewrite the architecture into a "process isolation" replay engine with IPC.
 - [ ] v0.1.1: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
