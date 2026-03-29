@@ -429,7 +429,7 @@ class FeverCore:
         raise NotImplementedError
 
     def set_on_new_call_callback(
-        self, callback: Callable[[TraceNode, TraceNode], None]
+        self, callback: Callable[[TraceNode, TraceNode, FrameType, str], None]
     ) -> None:
         self._call_tracker._on_new_call = callback
 

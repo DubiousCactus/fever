@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import runpy
+import sys
 from pathlib import Path
 from traceback import StackSummary, format_exception_only, walk_tb
+from types import FrameType, TracebackType
 from typing import (
     Any,
     Dict,
@@ -14,16 +16,28 @@ from rich.console import RenderableType
 from rich.pretty import Pretty
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header, RichLog, Select
+from textual.containers import Vertical
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    RichLog,
+    Select,
+    TabbedContent,
+    TabPane,
+)
 
 from fever.core import FeverCore
 from fever.tui.widgets.call_graph import CallGraph
 from fever.tui.widgets.nodes_panel import TraceNodesPanel
+from fever.tui.widgets.terminal_panel import TerminalPanel
 from fever.types import TraceNode
 
+from .widgets.function_stats import FunctionStatsPanel
 from .widgets.locals_panel import LocalsPanel
 from .widgets.logger import Logger
 from .widgets.tracer import Tracer
+from .widgets.welcome_modal import WelcomeModal, should_show_welcome
 
 logging.basicConfig(
     filename="fever_debug.log",
@@ -54,7 +68,7 @@ class TraceReplayUI(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("d", "toggle_dark", "Toggle dark mode"),
-        ("r", "reload", "Hot reload"),
+        ("r", "replay", "Replay trace"),
     ]
 
     def __init__(self, engine: FeverCore, script_path: str):
@@ -207,6 +221,8 @@ class TraceReplayUI(App):
             self._start_runner()
 
     def on_mount(self):
+        if should_show_welcome():
+            self.push_screen(WelcomeModal())
         self.run_trace()
 
     async def action_quit(self) -> None:
@@ -237,31 +253,62 @@ class TraceReplayUI(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield TraceNodesPanel(classes="box", id="trace_nodes")
-        yield CallGraph(classes="box", id="graph")
-        logs = Logger(classes="box", id="logger")
-        logs.border_title = "User logs"
-        logs.styles.border = ("solid", "gray")
-        yield logs
-        fever_logs = RichLog(
-            classes="box", id="fever_logs", highlight=True, markup=True, wrap=True
-        )
-        fever_logs.border_title = "Fever logs"
-        fever_logs.styles.border = ("solid", "gray")
-        yield fever_logs
-        lcls = LocalsPanel(classes="box")
-        lcls.styles.border = ("solid", "gray")
-        yield lcls
-        yield Tracer(classes="box")
-        traceback = RichLog(
-            classes="box", id="traceback", highlight=True, markup=True, wrap=False
-        )
-        traceback.border_title = "Exception traceback"
-        traceback.styles.border = ("solid", "gray")
-        yield traceback
+        with TabbedContent(initial="tab-graph", id="tracer-tabs"):
+            with TabPane("Trace Graph", id="tab-graph"):
+                with Vertical(id="left-panel"):
+                    yield TraceNodesPanel(classes="box", id="nodes_panel")
+                    yield FunctionStatsPanel(id="func_stats")
+                    yield Button(
+                        "▶ Play",
+                        id="play_btn",
+                        variant="success",
+                    )
+                yield CallGraph(classes="box", id="graph")
+            with TabPane("Logs & Execution", id="tab-logs"):
+                fever_logs = RichLog(
+                    classes="box",
+                    id="fever_logs",
+                    highlight=True,
+                    markup=True,
+                    wrap=True,
+                )
+                fever_logs.border_title = "Fever logs"
+                fever_logs.styles.border = ("solid", "gray")
+                yield fever_logs
+
+                logs = Logger(classes="box", id="logger")
+                logs.border_title = "User logs"
+                logs.styles.border = ("solid", "gray")
+                yield logs
+
+                traceback = RichLog(
+                    classes="box",
+                    id="traceback",
+                    highlight=True,
+                    markup=True,
+                    wrap=False,
+                )
+                traceback.border_title = "Exception traceback"
+                traceback.styles.border = ("solid", "gray")
+                yield traceback
+
+                lcls = LocalsPanel(classes="box", id="lcls")
+                lcls.styles.border = ("solid", "gray")
+                yield lcls
+
+                with TabbedContent(initial="tab-tracer", id="sub-tracer-tabs"):
+                    with TabPane("Tracer logs", id="tab-tracer"):
+                        yield Tracer(classes="box", id="tracer")
+                    with TabPane("Debugger", id="tab-debugger"):
+                        yield TerminalPanel("Debugger (PDB++)", id="debugger_panel")
+                    with TabPane("IPython", id="tab-terminal"):
+                        yield TerminalPanel("IPython", id="terminal_panel")
+
         yield Footer()
 
-    def tracker_callback(self, k: TraceNode, v: TraceNode) -> None:
+    def tracker_callback(
+        self, k: TraceNode, v: TraceNode, frame: FrameType, module_name: str
+    ) -> None:
         try:
             self.log_tracer(f"CALL: {k} -> {v}")
         except Exception:
@@ -276,7 +323,8 @@ class TraceReplayUI(App):
         )
         if v.equals_ignore_params(self._end_node):
             self.log_tracer(f"Hanging on {v.module}.{v.func}...")
-            self.hang(False)
+            self.call_from_thread(self.set_locals, frame.f_locals, frame.f_code.co_name)
+            self.hang(False, frame=frame, module_name=module_name)
             while True:
                 if self._engine._call_tracker.stop_event.is_set():
                     self._engine._call_tracker.stop_event.clear()  # This will signal the TUI that we have acknowledged the stop request
@@ -295,6 +343,7 @@ class TraceReplayUI(App):
                 )
             )
             formatted = "No traceback available."
+            tb = None
         else:
             tb = exception.__traceback__.tb_next
             if tb is None:
@@ -336,21 +385,38 @@ class TraceReplayUI(App):
                 )
             )
         self.query_one("#traceback", RichLog).write(formatted)
-        self.hang(True)
+        self.hang(True, tb=tb)
 
-    async def action_reload(self) -> None:
+    async def action_replay(self) -> None:
         self.query_one(Tracer).clear()
         self.query_one(Logger).clear()
+        self.query_one("#debugger_panel", TerminalPanel).terminate()
         self.query_one("#fever_logs", RichLog).clear()
         self.query_one("#traceback", RichLog).clear()
         self.query_one(Tracer).ready()
+        tabs = self.query_one("#tracer-tabs", TabbedContent)
+        tabs.active = "tab-logs"
+        tabs = self.query_one("#sub-tracer-tabs", TabbedContent)
+        tabs.active = "tab-tracer"
         self.run_trace()
 
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "play_btn":
+            await self.action_replay()
+
     def log_tracer(self, message: str | RenderableType) -> None:
-        self.query_one(Tracer).write(message)
+        if self.is_mounted:
+            try:
+                self.query_one(Tracer).write(message)
+            except Exception:
+                pass
 
     def log_fever_event(self, message: str, style: str = "bold magenta") -> None:
-        self.query_one("#fever_logs", RichLog).write(Text(message, style=style))
+        if self.is_mounted:
+            try:
+                self.query_one("#fever_logs", RichLog).write(Text(message, style=style))
+            except Exception:
+                pass
         log.debug(f"Fever event: {message}")
 
     async def set_locals(self, locals: Dict[str, Any], frame_name: str) -> None:
@@ -358,14 +424,34 @@ class TraceReplayUI(App):
         panel.set_frame_name(frame_name)
         await panel.add_locals(locals)
 
-    def hang(self, threw: bool) -> None:
+    def hang(
+        self,
+        threw: bool,
+        tb: Optional[TracebackType] = None,
+        frame: Optional[FrameType] = None,
+        module_name: Optional[str] = None,
+    ) -> None:
         """
         Give visual signal that the builder is hung, either due to an exception or
         because the function ran successfully.
         """
-        self.query_one(Tracer).hang(threw)
-        self.query_one(TraceNodesPanel).hang(threw)
-        # self.query_one(CallGraph).hang(threw)
+        if self.is_mounted:
+            try:
+                self.query_one(Tracer).hang(threw)
+                self.query_one(TraceNodesPanel).hang(threw)
+                # self.query_one(CallGraph).hang(threw)
+                if tb is not None:
+                    debug_panel = self.query_one("#debugger_panel", TerminalPanel)
+                    self.call_from_thread(debug_panel.embed_pdb, tb)
+                elif frame is not None:
+                    terminal_panel = self.query_one("#terminal_panel", TerminalPanel)
+                    self.call_from_thread(
+                        terminal_panel.embed_ipython,
+                        frame,
+                        sys.modules.get(module_name) if module_name else None,
+                    )
+            except Exception:
+                pass
 
     def print_err(self, msg: str | Exception) -> None:
         self.log_tracer(

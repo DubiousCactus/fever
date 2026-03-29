@@ -34,7 +34,7 @@ class CallGraph(Static):
         await self.mount(
             GraphView(
                 graph,
-                layout_engine=SugiyamaLayout(direction=LayoutDirection.LEFT_RIGHT),
+                layout_engine=SugiyamaLayout(direction=LayoutDirection.TOP_DOWN),
             )
         )
         self._style()

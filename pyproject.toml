@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Theo Morales", email = "theo.morales.fr@gmail.com" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 dependencies = [
     "networkx",
     "matplotlib",
@@ -18,6 +18,8 @@ dependencies = [
     "textual>=6.6.0",
     "netext>=0.3.1",
     "duper>=0.0.6",
+    "pyte>=0.8.2",
+    "ipython>=8.38.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

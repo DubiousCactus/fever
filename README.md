@@ -21,11 +21,12 @@ lets you:
 - Drop in a debugger automatically when your code trace finishes, or on exceptions
 thrown, letting you investigate bugs and fix them by reviving your program instantly.
 
-![fever](https://github.com/user-attachments/assets/d181ae46-82eb-4581-b01d-0decea58a9b7)
+![fever](https://github.com/user-attachments/assets/8996d477-778a-47bf-b1ef-32e4fe41ab27)
+
 
 
 <div align="center">
-<a href="https://asciinema.org/a/806651"  target="_blank" style="display: inline-block;"><i>Link to the asciinema</i></a>
+<a href="https://asciinema.org/a/877291"  target="_blank" style="display: inline-block;"><i>Link to the asciinema</i></a>
 </div>
 <br>
 
@@ -104,7 +105,7 @@ new code. Pretty sweet, right?
 - [x] v0.0.5: Add interface to file watcher to trigger reload events
 - [x] v0.0.6: Implement a reliable (and unit-tested) smart caching mechanism
 - [x] v0.0.7: Add a tool executable to wrap a script and launch the trace replay TUI
-- [ ] v0.0.8: PDB++ TUI integration + flexible API
-- [ ] v0.0.9: Live trace graph update for the TUI
+- [x] v0.0.8: PDB++ TUI integration
+- [ ] v0.0.9: Live trace graph update, smarter tracing, trace stats display
 - [ ] v0.1.0: Rewrite the architecture into a "process isolation" replay engine with IPC.
 - [ ] v0.1.1: Handle all edge cases (decorated functions, methods, etc.) in hot reloading engine
