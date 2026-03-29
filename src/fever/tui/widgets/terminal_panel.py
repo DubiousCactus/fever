@@ -237,7 +237,14 @@ class PDBWidget(BasicTerminalWidget):
             sys.stdout.flush()
             sys.stderr.flush()
 
-            pdb.post_mortem(self.traceback)
+            crashed = True
+            while crashed:
+                try:
+                    pdb.post_mortem(self.traceback)
+                    crashed = False
+                except termios.error:
+                    sys.stdout.flush()
+                    sys.stderr.flush()
 
             os._exit(0)  # Ensure the child process exits after pdb finishes
 
