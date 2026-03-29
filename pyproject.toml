@@ -1,6 +1,6 @@
 [project]
 name = "fever"
-version = "0.0.7"
+version = "0.0.8"
 description = "The pace of Jupyter Notebooks in your existing code base. The power of pdb++ in a visual interface. Python hot code reloading on steroids."
 readme = "README.md"
 authors = [
