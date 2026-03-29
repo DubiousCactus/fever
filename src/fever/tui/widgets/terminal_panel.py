@@ -216,6 +216,12 @@ class BasicTerminalWidget(ScrollView):
         self._display.resize(rows, cols)
         self.virtual_size = self._display.virtual_size
 
+    def on_focus(self, event) -> None:
+        self.parent.on_focus(event)
+
+    def on_blur(self, event) -> None:
+        self.parent.on_blur(event)
+
 
 class PDBWidget(BasicTerminalWidget):
     def __init__(self, tb: Optional[TracebackType] = None):
@@ -401,6 +407,9 @@ class TerminalPanel(Static, can_focus=True):
 
     def on_focus(self, event) -> None:
         self.styles.border = ("solid", "green")
+
+    def on_blur(self, event) -> None:
+        self.styles.border = ("solid", "gray")
 
     def terminate(self) -> None:
         if self.widget is None:
