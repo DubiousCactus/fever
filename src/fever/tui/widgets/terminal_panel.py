@@ -61,11 +61,6 @@ class RichPyteDisplay(pyte.Screen):
         if how == 3:
             self._reset_history()
 
-    def _scroll_end(self) -> None:
-        if self.parent.is_vertical_scrollbar_grabbed:
-            return
-        self.parent.scroll_end(animate=False, immediate=True, x_axis=False)
-
     def index(self) -> None:
         """Overloaded to update top history with the removed lines."""
         top, bottom = self.margins or pyte.screens.Margins(0, self.lines - 1)
@@ -73,13 +68,12 @@ class RichPyteDisplay(pyte.Screen):
         if self.cursor.y == bottom:
             self.history.append(str(self.display[top]))
             self.parent.virtual_size = self.virtual_size
-            self.parent.call_after_refresh(self._scroll_end)
+            self.parent.request_scroll()
 
         super().index()
 
     def resize(self, lines: int, columns: int):
         super().resize(lines, columns)
-        self.parent.virtual_size = self.virtual_size
         self.initialized = True
 
     async def blink(self, interval_sec: float):
@@ -136,6 +130,8 @@ class BasicTerminalWidget(ScrollView):
         self._child_pid, self._child_fd = None, None
         self.executable = executable
         self.args = args
+        self._scroll_requested = False
+        self._scroll_scheduled = False
 
     def on_mount(self) -> None:
         self._spawn_repl()
@@ -175,6 +171,7 @@ class BasicTerminalWidget(ScrollView):
             return
 
         self._out_stream.feed(data)
+        self.request_scroll()
         self.refresh()
 
     def _shutdown(self):
@@ -211,9 +208,41 @@ class BasicTerminalWidget(ScrollView):
         if self._child_fd is not None:
             os.write(self._child_fd, seq)
 
-    def resize(self, rows: int, cols: int) -> None:
+    def on_resize(self, event) -> None:
+        new_size = event.size
+        if new_size.width == 0 or new_size.height == 0:
+            return
+
+        cols, rows = new_size.width, new_size.height
+        # Resize PTY
+        if self._child_fd is not None:
+            winsize = struct.pack("HHHH", rows, cols, 0, 0)
+            fcntl.ioctl(self._child_fd, termios.TIOCSWINSZ, winsize)
+        # Resize Pyte
         self._display.resize(rows, cols)
         self.virtual_size = self._display.virtual_size
+        self.refresh()
+
+    def request_scroll(self):
+        self._scroll_requested = True
+
+        if not self._scroll_scheduled:
+            self._scroll_scheduled = True
+            self.call_after_refresh(self.scroll_once)
+
+    def scroll_once(self) -> None:
+        print(
+            f"scroll requested: scroll_y={self.scroll_offset[1]}, virtual_height={self.virtual_size.height}, widget_height={self.size.height}"
+        )
+        self._scroll_scheduled = False
+
+        if not self._scroll_requested:
+            return
+
+        self._scroll_requested = False
+
+        if not self.is_vertical_scrollbar_grabbed:
+            self.scroll_end(animate=False, immediate=True, x_axis=False)
 
 
 class PDBWidget(BasicTerminalWidget):
@@ -376,20 +405,6 @@ class TerminalPanel(Static, can_focus=True):
                 "opacity", value=1.0, duration=0.05
             ),
         )
-
-    def on_resize(self, event) -> None:
-        if self.widget is None:
-            return
-        new_size = event.virtual_size
-        child_fd = self.widget._child_fd
-        if child_fd is None:
-            return
-        cols, rows = new_size.width, new_size.height
-
-        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-        fcntl.ioctl(child_fd, termios.TIOCSWINSZ, winsize)
-        self.widget.resize(rows, cols)
-        self.refresh()
 
     def on_focus(self, event) -> None:
         self.styles.border = ("solid", "green")
