@@ -45,7 +45,7 @@ are working hard on bringing the robustness to the best standards.**
 # How does it work?
 <details>
   <summary>Fever UML class diagram</summary>
-   <embed type="text/html" src="src/classes.html" width="500" height="200"> 
+   <embed type="text/html" src="https://github.com/DubiousCactus/fever/blob/79d99153cfa613b7ad79b98efe631f3f10b1fd74/src/classes.html" width="500" height="200"> 
 </details>
 Fever is at its core a hot code reloading engine, but on steroids. Hot reloading is
 proactive: fever analyzes your modules upon import and wraps functions to re-route
