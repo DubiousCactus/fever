@@ -21,11 +21,12 @@ lets you:
 - Drop in a debugger automatically when your code trace finishes, or on exceptions
 thrown, letting you investigate bugs and fix them by reviving your program instantly.
 
-![fever](https://github.com/user-attachments/assets/d181ae46-82eb-4581-b01d-0decea58a9b7)
+![fever](https://github.com/user-attachments/assets/8996d477-778a-47bf-b1ef-32e4fe41ab27)
+
 
 
 <div align="center">
-<a href="https://asciinema.org/a/806651"  target="_blank" style="display: inline-block;"><i>Link to the asciinema</i></a>
+<a href="https://asciinema.org/a/877291"  target="_blank" style="display: inline-block;"><i>Link to the asciinema</i></a>
 </div>
 <br>
 
